@@ -1,0 +1,16 @@
+{
+  "name": "GAZI FIELD",
+  "short_name": "GAZI FIELD",
+  "description": "One simple daily report. The whole project updated.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f2f3ee",
+  "theme_color": "#093b35",
+  "icons": [
+    { "src": "assets/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "assets/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "assets/icon-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

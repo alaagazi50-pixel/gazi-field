@@ -1,0 +1,216 @@
+// Farm hub ("Everything about HM16 lives in HM16"), its sub-pages, and the daily report view.
+import { t, getLang, LANGS } from './i18n.js';
+import { STAGES, farmProgress } from './data.js';
+import { state, save, me, farm, user, team, issue, photoMeta, savePhoto } from './store.js';
+import { esc, stageName, ICONS, topbar, toast, photoImg, hydratePhotos, pct, timeLabel, connBlock, progressBar, pickPhoto } from './ui.js';
+
+const isMgr = () => me()?.role === 'manager';
+const homeHref = () => (isMgr() ? '#/manage' : '#/');
+
+export function farmHubView({ farmId }) {
+  const f = farm(farmId);
+  const openIssues = state.issues.filter(i => i.farmId === f.id && i.status === 'open').length;
+  const item = (sub, icon, label, badge) => `<a class="tile" href="#/farm/${f.id}/${sub}">${ICONS[icon]}<span>${esc(label)}${badge ? ` <span class="badge">${badge}</span>` : ''}</span></a>`;
+  return {
+    html: `<div class="screen">${topbar({ back: homeHref() })}<main class="content">
+      <div class="h2">${esc(f.id)} · ${esc(f.region.toUpperCase())}</div>
+      <div class="strong upper">${farmProgress(f)}% ${esc(t('in_progress'))} · ${esc(team(f.teamId).name)}</div>
+      ${progressBar(farmProgress(f))}
+      <div class="eyebrow" style="margin-top:8px">${esc(t('project_information'))}</div>
+      <nav class="tiles two">
+        ${item('location', 'map', t('location'))}
+        ${item('drawing', 'drawing', t('project_drawing'))}
+        ${item('boq', 'boq', t('bill_of_quantities'))}
+        ${item('photos', 'photos', t('photos'))}
+        ${item('history', 'history', t('history'))}
+        ${item('issues', 'issues', t('issues'), openIssues)}
+      </nav>
+      <ul class="list">${STAGES.map(s => `<li>${esc(stageName(s.id))}<span class="r strong">${pct(f.stages[s.id])}</span></li>`).join('')}</ul>
+    </main></div>`,
+  };
+}
+
+function page(f, title, inner, mount) {
+  return { html: `<div class="screen">${topbar({ back: `#/farm/${f.id}` })}<main class="content">
+    <div class="eyebrow teal">${esc(f.id)} · ${esc(f.region)}</div><h1 class="h1">${esc(title)}</h1>${inner}</main></div>`, mount };
+}
+
+export function farmSubView({ farmId, sub }) {
+  const f = farm(farmId);
+  switch (sub) {
+    case 'location': return locationPage(f);
+    case 'drawing': return drawingPage(f);
+    case 'boq': return boqPage(f);
+    case 'photos': return photosPage(f);
+    case 'history': return historyPage(f);
+    case 'issues': return issuesPage(f);
+  }
+  return farmHubView({ farmId });
+}
+
+function locationPage(f) {
+  const { lat, lng } = f.gps;
+  const last = [...state.reports].filter(r => r.farmId === f.id && r.location?.lat != null).sort((a, b) => b.submittedAt - a.submittedAt)[0];
+  return page(f, t('location'), `
+    <div class="card flat stack">
+      <div class="eyebrow">${esc(t('gps_location'))}</div>
+      <svg class="map-svg" viewBox="0 0 300 170" aria-hidden="true">
+        <path d="M40 0 L140 170" stroke="#cdd8d2" stroke-width="16"/><path d="M200 0 L250 170" stroke="#cdd8d2" stroke-width="16"/>
+        <path d="M0 125 L300 35" stroke="#cdd8d2" stroke-width="16"/>
+        <path d="M95 35 L200 25 L210 120 L110 130 Z" fill="none" stroke="#093b35" stroke-width="2.5"/>
+        <circle cx="152" cy="77" r="11" fill="#093b35"/><circle cx="152" cy="77" r="4" fill="#fff"/>
+      </svg>
+      <div>${esc(f.id)} · ${esc(f.region)}</div>
+      <div class="small muted" dir="ltr">${lat.toFixed(5)}, ${lng.toFixed(5)}</div>
+      <a class="btn sm" href="https://www.google.com/maps/search/?api=1&query=${lat},${lng}" target="_blank" rel="noopener">${esc(t('open_maps'))}</a>
+    </div>
+    ${last ? `<div class="small muted">${esc(t('last_report'))}: ${esc(timeLabel(last.submittedAt))} · ${last.location.distKm.toFixed(1)} km</div>` : ''}`);
+}
+
+function drawingPage(f) {
+  const schematic = `<svg class="draw-svg" viewBox="0 0 300 130" aria-hidden="true" style="background:#fff;border:1px solid var(--line)">
+    <rect x="20" y="50" width="34" height="30" fill="#f2f3ee" stroke="#093b35" stroke-width="2.5"/>
+    <path d="M54 65 H280" stroke="#093b35" stroke-width="2.5"/>
+    ${[110, 150, 190, 230].map(x => `<path d="M${x} 20 V110 M${x - 6} 20 H${x + 6} M${x - 6} 110 H${x + 6}" stroke="#093b35" stroke-width="2.5"/>`).join('')}
+  </svg>`;
+  return page(f, t('project_drawing'), `
+    <div class="card flat stack"><div class="eyebrow">${esc(t('approved_layout'))}</div>
+      ${f.drawingPhotoId ? `<button data-zoom="${f.drawingPhotoId}" style="border:0;padding:0;background:none;cursor:zoom-in">${photoImg(f.drawingPhotoId)}</button>`
+        : `${schematic}<div class="small muted">${esc(t('no_drawing'))}</div>`}
+    </div>
+    ${isMgr() ? `<button class="btn sm" data-act="upload">${esc(f.drawingPhotoId ? t('replace_drawing') : t('upload_drawing'))}</button>` : ''}`,
+  async root => {
+    const b = root.querySelector('[data-act=upload]');
+    if (b) b.onclick = async () => {
+      const file = await pickPhoto(false);
+      if (!file) return;
+      const rec = await savePhoto(file, { farmId: f.id, stage: 'drawing', kind: 'drawing', stamp: false });
+      f.drawingPhotoId = rec.id;
+      await save();
+      window.dispatchEvent(new Event('rerender'));
+    };
+    await hydratePhotos(root);
+  });
+}
+
+function boqPage(f) {
+  const edit = isMgr();
+  const rows = f.boq.map((r, i) => edit
+    ? `<tr><td><input class="input" data-i="${i}" data-k="item" value="${esc(r.item)}"></td><td style="width:80px"><input class="input" data-i="${i}" data-k="unit" value="${esc(r.unit)}"></td><td style="width:110px"><input class="input" data-i="${i}" data-k="qty" value="${esc(r.qty)}" inputmode="decimal"></td></tr>`
+    : `<tr><td>${esc(r.item)}</td><td>${esc(r.unit || '—')}</td><td class="num">${esc(r.qty === '' || r.qty == null ? '—' : Number(r.qty).toLocaleString())}</td></tr>`).join('');
+  return page(f, t('bill_of_quantities'), `
+    <div class="tbl-wrap"><table class="tbl"><thead><tr><th>${esc(t('item'))}</th><th>${esc(t('unit'))}</th><th>${esc(t('qty'))}</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <div class="small muted">${esc(t('boq_note'))}</div>
+    ${edit ? `<div class="row"><button class="btn ghost sm" data-act="add">${esc(t('add_row'))}</button><button class="btn sm" data-act="save">${esc(t('save'))}</button></div>` : ''}`,
+  root => {
+    root.querySelectorAll('input[data-i]').forEach(inp => inp.oninput = () => { f.boq[+inp.dataset.i][inp.dataset.k] = inp.value; });
+    const add = root.querySelector('[data-act=add]');
+    if (add) add.onclick = () => { f.boq.push({ item: '', unit: '', qty: '' }); save().then(() => window.dispatchEvent(new Event('rerender'))); };
+    const sv = root.querySelector('[data-act=save]');
+    if (sv) sv.onclick = async () => { f.boq = f.boq.filter(r => r.item.trim()); await save(); toast(t('saved')); };
+  });
+}
+
+export function photoGrid(photos, { approve = false } = {}) {
+  if (!photos.length) return `<div class="empty">${esc(t('no_photos'))}</div>`;
+  return `<div class="photos">${photos.map(p => `<div class="ph">
+    <button class="imgbtn" data-zoom="${p.id}">${photoImg(p.id, p.label)}</button>
+    <div class="strong">${p.progress != null ? p.progress + '%' : esc(p.kind === 'issue' ? t('issues') : '')} <span class="muted" style="font-weight:400">${esc(stageName(p.stage))}</span></div>
+    <div class="muted" style="font-size:11px">${esc(p.label)}</div>
+    ${approve ? `<label class="row small" style="gap:6px"><input type="checkbox" data-approve="${p.id}" ${p.approved ? 'checked' : ''}> ${esc(t('approve_client'))}</label>`
+      : p.approved ? `<span class="tag ok">${esc(t('approved'))}</span>` : ''}
+  </div>`).join('')}</div>`;
+}
+export function bindApprove(root) {
+  root.querySelectorAll('[data-approve]').forEach(cb => cb.onchange = async () => {
+    photoMeta(cb.dataset.approve).approved = cb.checked;
+    await save();
+    toast(t('saved'));
+  });
+}
+
+function photosPage(f) {
+  const sel = new URLSearchParams(location.hash.split('?')[1] || '').get('stage');
+  let photos = state.photos.filter(p => p.farmId === f.id && p.kind !== 'drawing');
+  if (sel) photos = photos.filter(p => p.stage === sel);
+  photos.sort((a, b) => (a.stage || '').localeCompare(b.stage || '') || (a.progress ?? 0) - (b.progress ?? 0) || a.takenAt - b.takenAt);
+  const seg = `<div class="chips"><a class="pill ${sel ? '' : 'outline'}" href="#/farm/${f.id}/photos" style="text-decoration:none;color:inherit">${esc(t('all_stages'))}</a>
+    ${STAGES.map(s => `<a class="pill ${sel === s.id ? 'outline' : ''}" href="#/farm/${f.id}/photos?stage=${s.id}" style="text-decoration:none;color:inherit">${esc(stageName(s.id))}</a>`).join('')}</div>`;
+  return page(f, t('photo_history'), `${seg}${photoGrid(photos, { approve: isMgr() })}`, async root => { bindApprove(root); await hydratePhotos(root); });
+}
+
+function historyPage(f) {
+  const reps = state.reports.filter(r => r.farmId === f.id).sort((a, b) => b.submittedAt - a.submittedAt);
+  return page(f, t('history'), reps.length ? `<ul class="list">${reps.map(r => {
+    const changes = r.items.filter(i => i.action === 'updated').map(i => `${stageName(i.stage)} ${i.prev} → ${i.next}%`).join(' · ');
+    return `<li><a class="rowlink" href="#/report/${r.id}"><div><div class="strong">${esc(timeLabel(r.submittedAt))}</div>
+      <div class="small muted">${esc(user(r.userId)?.name)} · ${esc(changes || t('no_changes'))}</div></div>
+      <span class="r">${r.issueId ? `<span class="tag warn">${esc(t('issues'))}</span>` : ''}</span></a></li>`;
+  }).join('')}</ul>` : `<div class="empty">${esc(t('no_history'))}</div>`);
+}
+
+export function issueCard(i, { manage = false } = {}) {
+  const viewer = getLang();
+  const tr = i.lang !== viewer
+    ? `<a class="small" target="_blank" rel="noopener" href="https://translate.google.com/?sl=${i.lang}&tl=${viewer}&op=translate&text=${encodeURIComponent(i.note)}">${esc(t('translate'))}</a>` : '';
+  return `<div class="card flat stack">
+    <div class="row between"><span class="eyebrow">${esc(i.farmId)} · ${esc(stageName(i.stage))} / ${esc(t('cat_' + i.category))}</span>
+      <span class="tag ${i.status === 'open' ? 'warn' : 'ok'}">${esc(t(i.status))}</span></div>
+    ${i.note ? `<p class="note-quote" dir="auto">“${esc(i.note)}”</p>` : ''}
+    <div class="row small muted"><span>${esc(t('original', { l: LANGS[i.lang] || i.lang }))}</span>${tr}</div>
+    ${i.photoId ? `<button class="imgbtn" data-zoom="${i.photoId}" style="border:0;padding:0;background:none;max-width:220px">${photoImg(i.photoId).replace('<img', '<img class="photo-preview"')}</button>` : ''}
+    <div class="small muted">${esc(t('reported_by', { n: user(i.reportedBy)?.name || '—', t: timeLabel(i.at) }))}</div>
+    ${manage && i.status === 'open' ? `<button class="btn sm" data-resolve="${i.id}">${esc(t('resolve'))}</button>` : ''}
+  </div>`;
+}
+export function bindResolve(root) {
+  root.querySelectorAll('[data-resolve]').forEach(b => b.onclick = async () => {
+    Object.assign(issue(b.dataset.resolve), { status: 'resolved', resolvedAt: Date.now() });
+    await save();
+    window.dispatchEvent(new Event('rerender'));
+  });
+}
+
+function issuesPage(f) {
+  const list = state.issues.filter(i => i.farmId === f.id).sort((a, b) => (a.status === 'open' ? -1 : 1) - (b.status === 'open' ? -1 : 1) || b.at - a.at);
+  return page(f, t('issues'), list.length ? list.map(i => issueCard(i, { manage: isMgr() })).join('') : `<div class="empty">${esc(t('no_issues'))}</div>`,
+    async root => { bindResolve(root); await hydratePhotos(root); });
+}
+
+// ---------- Daily report ----------
+export function reportView({ reportId }) {
+  const r = state.reports.find(x => x.id === reportId);
+  if (!r) return { html: `<div class="screen">${topbar({ back: homeHref() })}<main class="content"><div class="empty">—</div></main></div>` };
+  const f = farm(r.farmId), u = user(r.userId), mgr = isMgr();
+  const iss = r.issueId && issue(r.issueId);
+  const rows = r.items.map(i => {
+    const val = i.action === 'updated' ? `${i.prev} → ${i.next}%` : i.prev === 0 ? `<span style="font-weight:400">${esc(t('not_started'))}</span>` : `${i.prev}%`;
+    let note = i.action === 'updated' ? t('photo_ok') : i.prev >= 100 ? '✓' : i.prev === 0 ? '' : t('no_change');
+    if (iss && iss.stage === i.stage && i.action !== 'updated') note = t('waiting');
+    return `<tr><td>${esc(stageName(i.stage))}</td><td class="num">${val}</td><td>${esc(note)}</td></tr>`;
+  }).join('');
+  const photoIds = [...r.items.map(i => i.photoId), r.issueId && issue(r.issueId)?.photoId].filter(Boolean);
+  const photos = photoIds.map(photoMeta).filter(Boolean);
+  const loc = r.location;
+  const locLine = !loc ? t('location_unavailable') : loc.verified ? t('location_verified') : loc.distKm != null ? t('location_far', { km: loc.distKm.toFixed(1) }) : t('location_unavailable');
+
+  return {
+    html: `<div class="screen ${mgr ? 'wide' : ''}">${topbar({ back: mgr ? '#/manage' : `#/farm/${f.id}/history` })}<main class="content">
+      <div class="eyebrow teal">${esc(t('report_detail'))}</div>
+      <h1 class="h1">${esc(f.id)} · ${esc(f.region)}</h1>
+      <div class="muted">${esc(team(r.teamId).name)} / ${esc(u?.name)} · ${esc(t('submitted_at', { t: timeLabel(r.submittedAt) }))}</div>
+      <div class="grid ${mgr ? 'c2' : ''} stack">
+        <div class="card flat"><div class="tbl-wrap"><table class="tbl"><tbody>${rows}</tbody></table></div>
+          <div style="margin-top:12px"><div class="strong">${r.items.length} / ${r.items.length} ${esc(t('reviewed'))} · ${photos.length} ${esc(t('photos_n'))}</div>
+          <div style="${loc && !loc.verified ? 'color:var(--red)' : ''}">${esc(locLine)}</div></div></div>
+        <div class="stack">
+          ${r.issueId ? issueCard(issue(r.issueId), { manage: mgr }) : ''}
+          <div class="card flat stack"><div class="eyebrow">${esc(t('connectivity'))} · ${esc(u?.name)}</div>${connBlock(r.connectivity)}</div>
+        </div>
+      </div>
+      <div class="eyebrow">${esc(t('photos'))}</div>
+      ${photoGrid(photos, { approve: mgr })}
+    </main></div>`,
+    async mount(root) { bindApprove(root); bindResolve(root); await hydratePhotos(root); },
+  };
+}
