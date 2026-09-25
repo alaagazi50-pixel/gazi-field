@@ -43,17 +43,23 @@ schema = open(os.path.join(APP, 'schema.sql'), encoding='utf-8').read()
 ex(schema)
 ex(schema)  # must be re-runnable
 ex(open(os.path.join(APP, 'seed.sql'), encoding='utf-8').read())
+ex(open(os.path.join(APP, 'setup.sql'), encoding='utf-8').read())   # the one-paste file must also run cleanly on top
 
 U = {k: str(uuid.uuid4()) for k in ['mgr', 'jamal', 'paulo', 'client', 'stranger', 'off']}
 for k, v in U.items(): ex("insert into auth.users values (%s, %s)", (v, k + '@x'))
+first = ex("select id, role from public.profiles").fetchall()
 for k, role, team in [('mgr', 'manager', None), ('jamal', 'worker', 'A'), ('paulo', 'worker', 'B'), ('client', 'client', None), ('off', 'worker', 'A')]:
-    ex("insert into public.profiles (id, username, full_name, role, team_id, active) values (%s,%s,%s,%s,%s,%s)", (U[k], k, k.title(), role, team, k != 'off'))
+    ex("""insert into public.profiles (id, username, full_name, role, team_id, active) values (%s,%s,%s,%s,%s,%s)
+          on conflict (id) do update set username = excluded.username, full_name = excluded.full_name, role = excluded.role,
+          team_id = excluded.team_id, active = excluded.active""", (U[k], k, k.title(), role, team, k != 'off'))
 
 passed = failed = 0
 def check(name, cond, extra=''):
     global passed, failed
     if cond: passed += 1; print('PASS', name)
     else: failed += 1; print('FAIL', name, extra)
+
+check('first login automatically becomes the only manager', [(str(i), r) for i, r in first] == [(U['mgr'], 'manager')], first)
 
 def as_(who, sql, params=None, fetch=True):
     with conn.transaction():

@@ -1,3 +1,7 @@
 # Source material, not part of the app
 *.pdf
 IMG-*.jpg
+
+# Local secrets (Supabase access token etc.) - never commit
+.secrets/
+*.env

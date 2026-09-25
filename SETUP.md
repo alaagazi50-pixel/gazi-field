@@ -10,25 +10,20 @@ You do this once, in about 20 minutes, in the browser. You need the files in thi
    - Region: pick the one closest to Angola, for example a region in Europe.
 3. Click **Create new project** and wait about 2 minutes.
 
-## 2. Create the database
-1. In the left menu, open **SQL Editor** and click **New query**.
-2. Open `supabase/schema.sql` from this folder in Notepad. Copy everything, paste it into the editor, and click **Run**. You should see *Success. No rows returned*.
-3. Click **New query** again. Paste `supabase/seed.sql` and click **Run**. This adds the 5 teams and 60 farms. Skip this step if you'd rather add your own farms.
+## 2. Create the database (one paste)
+1. In the left menu, open **SQL Editor** and click **+ New query**.
+2. Open `supabase/setup.sql` from this folder in Notepad. Press **Ctrl+A**, then **Ctrl+C**.
+3. Paste it into the editor and click **Run**. You should see *Success*. This creates the tables and access rules, plus 5 teams and 60 farms.
 
-## 3. Turn off public sign-up
-Only management creates accounts.
-1. Open **Authentication → Sign In / Providers** (on some versions it's under **Authentication → Settings**).
-2. Turn **Allow new users to sign up** **off**, then click **Save**.
-
-## 4. Create your manager account
+## 3. Create your manager login
 1. Open **Authentication → Users → Add user → Create new user**.
-2. Enter your email and a strong password, tick **Auto Confirm User**, and click **Create user**.
-3. Go back to **SQL Editor → New query** and paste the query below. Put your own email and name in it, then click **Run**:
-   ```sql
-   insert into public.profiles (id, username, full_name, role, lang)
-   select id, 'alaa', 'Alaa Gazi', 'manager', 'en' from auth.users where email = 'YOUR-EMAIL-HERE';
-   ```
-   It should say *1 row*. If it says *0 rows*, the email doesn't exactly match the one you entered in step 2.
+2. Enter your email and a password, tick **Auto Confirm User**, and click **Create user**.
+
+The **first** login created here automatically becomes the manager. Create everyone else from the app's **People** page.
+
+## 4. Turn off public sign-up
+1. Open **Authentication → Sign In / Providers** (on some versions it's **Settings**).
+2. Turn **Allow new users to sign up** **off**, then click **Save**.
 
 ## 5. Add the account-management function
 This is what lets you create worker and client logins from inside the app.

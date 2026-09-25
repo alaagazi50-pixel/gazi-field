@@ -288,3 +288,21 @@ create policy "gazi photos upload" on storage.objects for insert to authenticate
   ));
 create policy "gazi photos manage" on storage.objects for delete to authenticated using (
   bucket_id = 'photos' and (select public.my_role()) = 'manager');
+
+-- ---------------------------------------------------------------------------
+-- The very first login created in Authentication → Users becomes the manager automatically.
+-- Everyone after that is created from the app's People page (admin-users function).
+-- ---------------------------------------------------------------------------
+create or replace function public.first_user_is_manager() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if not exists (select 1 from public.profiles where role = 'manager') then
+    insert into public.profiles (id, username, full_name, role, lang)
+    values (new.id, lower(split_part(new.email, '@', 1)), split_part(new.email, '@', 1), 'manager', 'en')
+    on conflict (id) do nothing;
+  end if;
+  return new;
+end $$;
+drop trigger if exists first_user_is_manager on auth.users;
+create trigger first_user_is_manager after insert on auth.users
+  for each row execute function public.first_user_is_manager();

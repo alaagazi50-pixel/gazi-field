@@ -3,7 +3,7 @@
 // Views read the in-memory `state` synchronously. It is filled from the local cache at start,
 // then refreshed from the server. Field reports are queued in an outbox and uploaded when the
 // phone has internet; management actions go straight to the server.
-import { SUPABASE_URL, SUPABASE_ANON_KEY, USERNAME_DOMAIN } from './config.js';
+import { SUPABASE_URL, SUPABASE_ANON_KEY, USERNAME_DOMAIN, ADMIN_FUNCTION } from './config.js';
 import { kvGet, kvSet, kvDel, putPhoto, getPhoto } from './db.js';
 import { photoLabel } from './data.js';
 
@@ -324,7 +324,7 @@ export async function setDrawing(farmId, file) {
 }
 export async function adminUsers(body) {
   if (!navigator.onLine) throw new Error('needs_connection');
-  const { data, error } = await sb.functions.invoke('admin-users', { body });
+  const { data, error } = await sb.functions.invoke(ADMIN_FUNCTION || 'admin-users', { body });
   if (error) {
     let msg = error.message;
     try { msg = (await error.context.json()).error || msg; } catch { /* keep generic message */ }
