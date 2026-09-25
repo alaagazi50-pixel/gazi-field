@@ -1,7 +1,7 @@
 // Shared rendering helpers.
 import { t, getLang } from './i18n.js';
 import { hhmm, niceDate } from './data.js';
-import { photoURL, photoMeta } from './store.js';
+import { photoURL, photoMeta, pendingCount } from './store.js';
 import { currentConn } from './connectivity.js';
 
 export const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -29,9 +29,15 @@ export function topbar({ back, title, right = '' } = {}) {
     ${back ? `<a class="iconbtn flip" href="${back}" aria-label="${esc(t('back'))}">${ICONS.back}</a>` : ''}
     <a class="brand" href="#/">GAZI <span>FIELD</span></a>
     ${title ? `<span class="muted small">· ${esc(title)}</span>` : ''}
-    <span class="grow"></span>${right}${connPill}
+    <span class="grow"></span>${right}${pendingCount() ? `<a class="pill warn-pill" href="#/sync">${esc(t('waiting_sync', { n: pendingCount() }))}</a>` : ''}${connPill}
     <a class="iconbtn" href="#/settings" aria-label="${esc(t('settings'))}">${ICONS.menu}</a>
   </header>`;
+}
+
+// Show an error from a store action in the user's language.
+export function fail(e) {
+  const key = e?.message;
+  toast(['needs_connection', 'wrong_login', 'no_access'].includes(key) ? t(key) : (key || 'Error'));
 }
 
 export function toast(msg) {

@@ -1,7 +1,7 @@
 // Field team screens: home, farm picker, and the daily update flow.
-import { t } from './i18n.js';
-import { STAGES, CATEGORIES, STEP, LOCATION_RADIUS_KM, dateKey, hhmm, farmProgress, distanceKm, uid } from './data.js';
-import { state, save, me, farm, team, teamFarm, reportFor, savePhoto, photoMeta } from './store.js';
+import { t, getLang } from './i18n.js';
+import { STAGES, CATEGORIES, STEP, LOCATION_RADIUS_KM, dateKey, hhmm, farmProgress, distanceKm } from './data.js';
+import { state, save, me, farm, team, teamFarm, teamFarms, reportFor, savePhoto, photoMeta, queueReport, newId, dismissFailed } from './store.js';
 import { esc, stageName, ICONS, topbar, photoImg, hydratePhotos, pct, connBlock, getPosition, pickPhoto, progressBar } from './ui.js';
 import { connectivitySummary, currentConn } from './connectivity.js';
 
@@ -10,6 +10,7 @@ const go = h => { location.hash = h; };
 // ---------------- Home ----------------
 export async function homeView() {
   const u = me(), tm = team(u.teamId), f = teamFarm(u.teamId);
+  if (!f) return { html: `<div class="screen">${topbar()}<main class="content"><p class="greet">${esc(u.name)}</p><div class="empty">${esc(t('no_farm_assigned'))}</div></main></div>` };
   const today = dateKey();
   const rep = reportFor(f.id, today);
   const draft = state.drafts[`${f.id}|${today}`];
@@ -20,7 +21,8 @@ export async function homeView() {
 
   let cta;
   if (rep) cta = `<div class="card dark flat"><div class="check" style="color:#fff;font-size:44px">✓</div>
-      <div class="h3 upper" style="margin-top:6px">${esc(t('day_submitted'))} · ${hhmm(rep.submittedAt)}</div></div>
+      <div class="h3 upper" style="margin-top:6px">${esc(t('day_submitted'))} · ${hhmm(rep.submittedAt)}</div>
+      ${rep.pending ? `<div class="small" style="margin-top:6px;color:#9fd3a6">${esc(t('pending_upload'))}</div>` : ''}</div>
       <a class="btn ghost" href="#/report/${rep.id}">${esc(t('view_today'))}</a>`;
   else cta = `<a class="btn" href="#/update/${f.id}">${esc(draft ? t('continue_update') : t('start_daily_update'))}</a>`;
 
@@ -46,17 +48,28 @@ export async function homeView() {
         ${tile(`#/farm/${f.id}/photos`, 'photos', t('photos'))}
         ${tile(`#/farm/${f.id}/history`, 'history', t('history'))}
       </nav>
+      ${failedCards()}
       ${openIssues ? `<a class="card alert flat" href="#/farm/${f.id}/issues" style="text-decoration:none">${esc(t('issues'))}: ${openIssues} ${esc(t('open'))}</a>` : ''}
       <div class="card flat stack"><div class="eyebrow muted">${esc(t('conn_last_hours', { h: conn.hours }))}</div>${connBlock(conn, { compact: true })}</div>
     </main></div>`,
-    mount(root) { root.querySelector('[data-act=pick]').onclick = () => go('#/pick-farm'); },
+    mount(root) {
+      root.querySelector('[data-act=pick]').onclick = () => go('#/pick-farm');
+      root.querySelectorAll('[data-dismiss]').forEach(b => b.onclick = () => dismissFailed(b.dataset.dismiss));
+    },
   };
+}
+
+// Reports the server refused (e.g. a teammate already sent this farm's report today).
+function failedCards() {
+  return state.outbox.filter(o => o.error).map(o => `<div class="card alert flat stack">
+    <strong>${esc(o.report.farmId)} · ${esc(o.report.date)}</strong><div class="small">${esc(t('report_failed', { e: o.error }))}</div>
+    <button class="btn ghost xs" data-dismiss="${esc(o.id)}" style="align-self:flex-start">${esc(t('dismiss'))}</button></div>`).join('');
 }
 
 export function pickFarmView() {
   const u = me();
-  const farms = state.farms.filter(f => f.teamId === u.teamId);
-  const cur = teamFarm(u.teamId).id;
+  const farms = teamFarms(u.teamId);
+  const cur = teamFarm(u.teamId)?.id;
   return {
     html: `<div class="screen">${topbar({ back: '#/' })}<main class="content">
       <h1 class="h1">${esc(t('your_farms'))}</h1>
@@ -66,7 +79,7 @@ export function pickFarmView() {
     </main></div>`,
     mount(root) {
       root.querySelectorAll('[data-farm]').forEach(b => b.onclick = async () => {
-        state.farmOverride[u.teamId] = b.dataset.farm;
+        state.farmPick[u.teamId] = b.dataset.farm;
         await save();
         go('#/');
       });
@@ -233,7 +246,7 @@ export function updateView({ farmId }) {
         const file = await pickPhoto(useCamera);
         if (!file) return;
         const loc = await Promise.race([getPosition(4000), new Promise(r => setTimeout(() => r(null), 4500))]);
-        const rec = await savePhoto(file, { ...meta, farmId: f.id, userId: u.id, userName: u.name, teamId: u.teamId, loc });
+        const rec = await savePhoto(file, { ...meta, farmId: f.id, loc });
         done(rec.id);
         commit();
       };
@@ -284,31 +297,26 @@ export function updateView({ farmId }) {
 async function submit(f, u, d) {
   if (d.items.some(i => !i.action)) { d.step = 'stage'; d.idx = d.items.findIndex(i => !i.action); await save(); window.dispatchEvent(new Event('rerender')); return; }
   const now = Date.now();
-  let issueId = null;
-  if (d.issue.mode === 'report') {
-    issueId = uid();
-    state.issues.push({
-      id: issueId, farmId: f.id, stage: d.issue.stage, category: d.issue.category, note: d.issue.note.trim(),
-      lang: u.lang, photoId: d.issue.photoId, reportedBy: u.id, teamId: u.teamId, at: now, status: 'open',
-    });
-  }
-  d.items.forEach(it => { if (it.action === 'updated') f.stages[it.stage] = it.next; });
   const report = {
-    id: uid(), farmId: f.id, teamId: u.teamId, userId: u.id, date: d.date, submittedAt: now, issueId,
+    id: newId(), farmId: f.id, teamId: u.teamId, userId: u.id, date: d.date, submittedAt: now, issueId: null,
     items: d.items.map(({ stage, prev, next, action, photoId }) => ({ stage, prev, next, action, photoId })),
     location: d.location && { lat: d.location.lat, lng: d.location.lng, acc: d.location.acc, distKm: d.location.distKm, verified: !!d.location.verified },
     connectivity: await connectivitySummary(undefined, now),
-    synced: false,
   };
-  state.reports.push(report);
+  const issue = d.issue.mode === 'report'
+    ? { stage: d.issue.stage, category: d.issue.category, note: d.issue.note.trim(), photoId: d.issue.photoId, lang: getLang() }
+    : null;
   delete state.drafts[d.key];
-  await save();
+  await queueReport(report, issue);
   location.hash = `#/done/${report.id}`;
 }
 
 export function doneView({ reportId }) {
   const r = state.reports.find(x => x.id === reportId);
-  const photos = r.items.filter(i => i.photoId).length + (r.issueId && state.issues.find(i => i.id === r.issueId)?.photoId ? 1 : 0);
+  if (!r) { go('#/'); return { html: '' }; }
+  const queued = state.outbox.find(o => o.id === r.id);
+  const photos = queued ? queued.photoIds.length
+    : r.items.filter(i => i.photoId).length + (r.issueId && state.issues.find(i => i.id === r.issueId)?.photoId ? 1 : 0);
   return {
     html: `<div class="screen">${topbar()}<main class="content">
       <div class="eyebrow">${esc(r.farmId)}</div>
@@ -318,7 +326,7 @@ export function doneView({ reportId }) {
       <hr>
       <div>${r.items.length} / ${r.items.length} ${esc(t('reviewed'))}<br>${photos} ${esc(photos === 1 ? t('photo_1') : t('photos_n'))}<br>
         ${esc(r.location?.verified ? t('location_verified') : r.location ? t('location_far', { km: (r.location.distKm ?? 0).toFixed(1) }) : t('location_unavailable'))}</div>
-      <p class="muted">${esc(t('you_are_finished'))}${currentConn() === false ? '<br>' + esc(t('saved_offline')) : ''}</p>
+      <p class="muted">${esc(t('you_are_finished'))}${r.pending ? '<br>' + esc(t('saved_offline')) : ''}</p>
       <span class="spacer"></span>
       <div class="btn" style="cursor:default">${esc(r.farmId)} ${esc(t('updated'))}</div>
       <a class="btn ghost" href="#/">${esc(t('home'))}</a>

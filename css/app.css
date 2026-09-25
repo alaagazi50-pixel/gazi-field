@@ -49,7 +49,7 @@ img { max-width: 100%; display: block; }
   background: var(--card); border-bottom: 1px solid var(--line);
 }
 .wide .topbar { background: var(--bg); border-bottom-color: transparent; }
-.brand { font-family: "Sora", var(--font); font-weight: 700; font-size: 15px; letter-spacing: .02em; color: var(--ink); text-decoration: none; }
+.brand { white-space: nowrap; font-family: "Sora", var(--font); font-weight: 700; font-size: 15px; letter-spacing: .02em; color: var(--ink); text-decoration: none; }
 .brand span { color: var(--teal); }
 .topbar .grow { flex: 1; }
 .iconbtn { border: 0; background: transparent; width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center; cursor: pointer; color: var(--ink); }
@@ -221,3 +221,10 @@ textarea.input { min-height: 90px; resize: vertical; }
 .segmented a { padding: 6px 14px; font-size: 13px; font-weight: 600; text-decoration: none; color: var(--ink); }
 .segmented a.on { background: var(--green); color: #fff; }
 [hidden] { display: none !important; }
+.pill.warn-pill { background: #fde3d8; border-color: #f4b49c; color: #a4401b; text-decoration: none; }
+.form { display: flex; flex-direction: column; gap: 12px; }
+.form label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 600; color: var(--ink-2); }
+.form .input { font-weight: 400; color: var(--ink); }
+.login .input { background: rgba(255,255,255,.95); }
+.login .err { background: #fde3d8; color: #7a2c12; padding: 10px 12px; border-radius: 8px; font-size: 14px; }
+.stage-edit { display: grid; grid-template-columns: 1fr 110px; gap: 8px 12px; align-items: center; }

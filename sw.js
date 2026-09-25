@@ -1,9 +1,10 @@
 // Service worker: offline app shell + background connectivity probes.
-const CACHE = 'gazi-field-v0.1.0';
+const CACHE = 'gazi-field-v0.2.0';
 const SHELL = [
   './', './index.html', './manifest.webmanifest', './css/app.css',
   './js/app.js', './js/i18n.js', './js/db.js', './js/data.js', './js/store.js', './js/ui.js',
   './js/connectivity.js', './js/field.js', './js/farm.js', './js/manage.js', './js/client.js',
+  './js/config.js', './js/people.js', './js/vendor/supabase.js',
   './assets/logo.jpg', './assets/icon-192.png', './assets/icon-512.png', './assets/icon-maskable.png', './assets/apple-touch-icon.png',
 ];
 const PROBE_URL = 'https://www.gstatic.com/generate_204';
@@ -43,7 +44,7 @@ self.addEventListener('fetch', e => {
 // ----- connectivity samples while the app is closed (where Periodic Background Sync is available) -----
 function saveSample(rec) {
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open('gazi-field', 1);
+    const req = indexedDB.open('gazi-field', 2);
     req.onupgradeneeded = () => {
       const db = req.result;
       ['kv'].forEach(n => db.objectStoreNames.contains(n) || db.createObjectStore(n));

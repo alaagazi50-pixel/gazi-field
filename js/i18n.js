@@ -166,6 +166,56 @@ const S = {
   },
 };
 
+// Accounts, sync and people management.
+Object.assign(S.en, {
+  sign_in: 'Sign in', sign_out: 'Sign out', username: 'Username', username_or_email: 'Username or email', password: 'Password',
+  wrong_login: 'Wrong username or password.', no_access: 'This account has no access. Ask management.',
+  not_configured: 'The server is not connected yet. Management: fill in js/config.js (see README).',
+  signing_in: 'Signing in…', needs_connection: 'This needs an internet connection.',
+  waiting_sync: '{n} waiting to upload', sync_now: 'Upload now', synced_at: 'Updated {t}', sync_failed: 'Could not reach the server. Will retry.',
+  pending_upload: 'Waiting to upload', report_failed: 'Not accepted: {e}', dismiss: 'Remove', cant_sign_out: 'Upload waiting reports before signing out.',
+  refresh: 'Refresh', no_farm_assigned: 'No farm is assigned to your team yet. Ask management.',
+  people: 'People', add_person: 'Add person', full_name: 'Full name', role: 'Role', role_field: 'Field worker', role_manager: 'Management', role_client: 'Client',
+  create_account: 'Create account', cancel: 'Cancel', account_created: 'Account created. Give them: username {u} · password {p}',
+  reset_password: 'Reset password', new_password: 'New password', password_changed: 'Password changed', generate: 'Generate',
+  deactivate: 'Switch off', activate: 'Switch on', inactive: 'Switched off', edit: 'Edit', teams: 'Teams', add_team: 'Add team',
+  team_code: 'Code (e.g. F)', team_name: 'Name', today_farm: 'Farm today', edit_progress: 'Correct progress', no_team: 'No team',
+  email_optional: 'Email (optional, for management/client)',
+  storage_limited: 'This phone is not saving data offline. Close other GAZI FIELD tabs and reopen the app.',
+});
+Object.assign(S.pt, {
+  sign_in: 'Entrar', sign_out: 'Sair', username: 'Utilizador', username_or_email: 'Utilizador ou email', password: 'Palavra-passe',
+  wrong_login: 'Utilizador ou palavra-passe errados.', no_access: 'Esta conta não tem acesso. Fale com a gestão.',
+  not_configured: 'O servidor ainda não está ligado. Gestão: preencha js/config.js (ver README).',
+  signing_in: 'A entrar…', needs_connection: 'Isto precisa de ligação à internet.',
+  waiting_sync: '{n} à espera de envio', sync_now: 'Enviar agora', synced_at: 'Atualizado {t}', sync_failed: 'Sem ligação ao servidor. Vai tentar de novo.',
+  pending_upload: 'À espera de envio', report_failed: 'Não aceite: {e}', dismiss: 'Remover', cant_sign_out: 'Envie os relatórios pendentes antes de sair.',
+  refresh: 'Atualizar', no_farm_assigned: 'A sua equipa ainda não tem fazenda. Fale com a gestão.',
+  people: 'Pessoas', add_person: 'Adicionar pessoa', full_name: 'Nome completo', role: 'Função', role_field: 'Trabalhador de campo', role_manager: 'Gestão', role_client: 'Cliente',
+  create_account: 'Criar conta', cancel: 'Cancelar', account_created: 'Conta criada. Entregue: utilizador {u} · palavra-passe {p}',
+  reset_password: 'Repor palavra-passe', new_password: 'Nova palavra-passe', password_changed: 'Palavra-passe alterada', generate: 'Gerar',
+  deactivate: 'Desativar', activate: 'Ativar', inactive: 'Desativada', edit: 'Editar', teams: 'Equipas', add_team: 'Adicionar equipa',
+  team_code: 'Código (ex. F)', team_name: 'Nome', today_farm: 'Fazenda de hoje', edit_progress: 'Corrigir progresso', no_team: 'Sem equipa',
+  email_optional: 'Email (opcional, para gestão/cliente)',
+  storage_limited: 'Este telefone não está a guardar dados offline. Feche outros separadores GAZI FIELD e reabra a aplicação.',
+});
+Object.assign(S.ar, {
+  sign_in: 'تسجيل الدخول', sign_out: 'تسجيل الخروج', username: 'اسم المستخدم', username_or_email: 'اسم المستخدم أو البريد', password: 'كلمة المرور',
+  wrong_login: 'اسم المستخدم أو كلمة المرور غير صحيحة.', no_access: 'هذا الحساب ليس له صلاحية. تواصل مع الإدارة.',
+  not_configured: 'الخادم غير متصل بعد. الإدارة: املأ js/config.js (راجع README).',
+  signing_in: 'جارٍ تسجيل الدخول…', needs_connection: 'هذا يحتاج اتصالًا بالإنترنت.',
+  waiting_sync: '{n} بانتظار الرفع', sync_now: 'ارفع الآن', synced_at: 'تم التحديث {t}', sync_failed: 'تعذر الوصول إلى الخادم. ستتم المحاولة مجددًا.',
+  pending_upload: 'بانتظار الرفع', report_failed: 'لم يُقبل: {e}', dismiss: 'إزالة', cant_sign_out: 'ارفع التقارير المنتظرة قبل تسجيل الخروج.',
+  refresh: 'تحديث', no_farm_assigned: 'لم تُخصص مزرعة لفريقك بعد. تواصل مع الإدارة.',
+  people: 'الأشخاص', add_person: 'إضافة شخص', full_name: 'الاسم الكامل', role: 'الدور', role_field: 'عامل ميداني', role_manager: 'الإدارة', role_client: 'العميل',
+  create_account: 'إنشاء حساب', cancel: 'إلغاء', account_created: 'تم إنشاء الحساب. أعطه: اسم المستخدم {u} · كلمة المرور {p}',
+  reset_password: 'إعادة تعيين كلمة المرور', new_password: 'كلمة مرور جديدة', password_changed: 'تم تغيير كلمة المرور', generate: 'توليد',
+  deactivate: 'إيقاف', activate: 'تفعيل', inactive: 'موقوف', edit: 'تعديل', teams: 'الفرق', add_team: 'إضافة فريق',
+  team_code: 'الرمز (مثل F)', team_name: 'الاسم', today_farm: 'مزرعة اليوم', edit_progress: 'تصحيح التقدم', no_team: 'بدون فريق',
+  email_optional: 'البريد (اختياري، للإدارة/العميل)',
+  storage_limited: 'هذا الهاتف لا يحفظ البيانات دون اتصال. أغلق علامات تبويب GAZI FIELD الأخرى وأعد فتح التطبيق.',
+});
+
 let current = 'en';
 export function setLang(l) {
   current = S[l] ? l : 'en';

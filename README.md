@@ -1,51 +1,52 @@
-# GAZI FIELD — v0.1.0
+# GAZI FIELD — v0.2.0
 
 One simple daily report. The whole project updated.
 
-This first version is an installable, offline-first web app (PWA). It has no build step and no dependencies.
+An installable, offline-first web app (PWA) for field teams, with Supabase as the server for accounts, the database and photo storage. There's no build step.
 
-## Run it
+**First time? Follow [SETUP.md](SETUP.md)** to connect the server and create your manager account.
+
+## Three kinds of account
+
+| Role | What they get |
+|---|---|
+| **Field worker** | Signs in with a username. Sees their team's farm and does the daily report: one stage, one question, and a photo for any progress change. Also reports blocking issues. Works without signal: reports wait on the phone and upload by themselves. |
+| **Management** | Dashboard (teams reported, farms updated, needs attention), report review, photo approval for the client, issue resolution, farm list and CSV export. The **People** page creates accounts, sets role, team and language, resets passwords and switches people off. Picks each team's farm for the day and can correct progress. |
+| **Client** | Project progress, completed and in-progress farms, and approved photos only. No names, notes or issues. |
+
+Access is enforced by row-level security in the database (`supabase/schema.sql`), not only hidden in the screens. Progress from the field can only change through `submit_report()`, which checks the worker's team and requires a photo for every change.
+
+## Phone connectivity
+
+While the app is open, it tests for real internet every 3 minutes, on network changes, and when the app is reopened. Each test makes an actual request to the app's own server, because the phone's "online" flag isn't reliable. Every daily report carries a 12-hour timeline showing when the phone had internet, had none, or wasn't observed. Management sees it on the report and on each team's card. Time when the app was closed shows as "not observed". Logging all day would need a native Android app.
+
+## Hosting and tests
+
+- **Website:** GitHub Pages (`alaagazi50-pixel.github.io/gazi-field`), or Render as a static site through `render.yaml`. Both are free, and you can run either or both.
+- **Server:** Supabase (Postgres, logins, photo storage, the `admin-users` function).
+- **Tests:** `.github/workflows/tests.yml` runs on every push. It runs the database access rules (`tests/db_test.py`, against a real Postgres) and checks that every app file parses. To run locally: `pip install "psycopg[binary]" pgserver`, then `python tests/db_test.py`.
+
+## Run locally
 
 ```
 serve.bat            (or: python -m http.server 8080)
 ```
-
-Open http://localhost:8080. To use it on a phone it has to be served over **https** (for example GitHub Pages, Netlify, or any static host). Camera, GPS and "Install app" all need https. Once it's loaded, the app works offline.
-
-## What's in v1
-
-| Who | Screens |
-|---|---|
-| **Field team** (Jamal) | Home → Start daily update → one stage, one question (No change / Update progress) → pick new % in one tap → **photo required** → confirm. After the 7 stages: anything blocking? (category, stage, optional photo, note in any language) → summary (tap a row to fix it) → Submit day. |
-| **Farm hub** | Location (GPS + open in maps), project drawing (management uploads), BOQ (management edits), photo history per stage, report history, issues. |
-| **Management** | Dashboard: teams reported, farms updated, needs attention (open issues and missing reports with Follow up), reports from today, each team's phone connectivity. Report review: approve photos for the client, resolve issues, translate notes. Farm list with CSV export. |
-| **Client portal** | Project %, completed and in-progress farms. Only photos management has approved are shown. No names, notes or issues. |
-
-- **Photos are organized automatically.** Each photo is resized, stamped with `HM16 · ROOM · 080 · 25SEP26 · 17:32 · Jamal`, and linked to its farm, stage, %, time, user and GPS.
-- **Location check:** when the day is submitted, the phone's GPS is compared with the farm (within 3 km means verified).
-- **Languages:** English, Português, العربية (right-to-left). Each note keeps the language it was written in.
-
-## Phone connectivity (did the phone actually have internet?)
-
-- While the app is open, it tests for **real internet** every 3 minutes. It also tests when the network changes and when the app is reopened. Each test is an actual request to `gstatic.com/generate_204`, because the phone's "online" flag says yes even on Wi-Fi or mobile data that has no internet.
-- Every daily report includes a **12-hour timeline** of those results: had internet, no internet, and not observed. Management sees it on the report and on each team's card.
-- **Limit:** a web app can't run while it's closed. Time when the app wasn't open shows as *not observed*, never as offline. On Android Chrome with the app installed, the service worker also tests in the background through Periodic Background Sync, but the browser decides how often, usually every few hours at best. A native Android app would be needed to log connectivity all day.
-
-## Known limits of v1
-
-- **No server yet.** Everything is saved on the device (IndexedDB), so management only sees reports sent from the same device, which is enough for the demo. The next step is a backend (API, database and photo storage) with an outbox sync. Reports already carry a `synced: false` flag for this.
-- Translation opens Google Translate. It isn't built in yet.
-- Demo data (60 farms, 5 teams, sample BOQ quantities) is generated. Reset it in Settings with "Reset demo data".
-- There are no passwords yet. You pick who is using the phone.
+Open http://localhost:8080. It uses the same Supabase project as `js/config.js`.
 
 ## Files
 
 ```
-index.html  manifest.webmanifest  sw.js       app shell, PWA manifest, offline cache and background checks
-css/app.css                                   styles
-js/app.js          router, login, settings    js/field.js    home and daily update flow
-js/farm.js         farm hub and report view   js/manage.js   dashboard and farm list
-js/client.js       client portal              js/connectivity.js  internet tests and timeline
-js/store.js js/db.js  storage and photos      js/data.js     stages, demo data, helpers
-js/i18n.js         EN / PT / AR strings
+index.html  manifest.webmanifest  sw.js      app shell, install, offline cache
+js/config.js        server address and public key (fill in once)
+js/store.js         sign-in, data loading, offline copy, upload queue, management actions
+js/app.js           router, sign-in, settings    js/people.js   accounts and teams (management)
+js/field.js         home and daily update flow   js/farm.js     farm pages and report view
+js/manage.js        dashboard and farm list      js/client.js   client portal
+js/connectivity.js  internet tests and timeline  js/i18n.js     English / Português / العربية
+js/vendor/supabase.js   Supabase client library (v2.117.1, bundled so it works offline)
+supabase/schema.sql     tables, access rules, submit_report()
+supabase/seed.sql       starter teams and 60 farms
+supabase/functions/admin-users/index.ts   creates accounts and resets passwords (management only)
+tests/db_test.py        who-can-see-what checks (run by GitHub Actions)
+render.yaml             optional Render static-site hosting
 ```

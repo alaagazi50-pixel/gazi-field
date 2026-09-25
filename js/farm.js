@@ -1,8 +1,8 @@
 // Farm hub ("Everything about HM16 lives in HM16"), its sub-pages, and the daily report view.
 import { t, getLang, LANGS } from './i18n.js';
 import { STAGES, farmProgress } from './data.js';
-import { state, save, me, farm, user, team, issue, photoMeta, savePhoto } from './store.js';
-import { esc, stageName, ICONS, topbar, toast, photoImg, hydratePhotos, pct, timeLabel, connBlock, progressBar, pickPhoto } from './ui.js';
+import { state, me, farm, user, team, issue, photoMeta, setPhotoApproved, resolveIssue, saveBoq, saveStages, setDrawing, setFarmTeam } from './store.js';
+import { esc, stageName, ICONS, topbar, toast, fail, photoImg, hydratePhotos, pct, timeLabel, connBlock, progressBar, pickPhoto } from './ui.js';
 
 const isMgr = () => me()?.role === 'manager';
 const homeHref = () => (isMgr() ? '#/manage' : '#/');
@@ -25,9 +25,35 @@ export function farmHubView({ farmId }) {
         ${item('history', 'history', t('history'))}
         ${item('issues', 'issues', t('issues'), openIssues)}
       </nav>
-      <ul class="list">${STAGES.map(s => `<li>${esc(stageName(s.id))}<span class="r strong">${pct(f.stages[s.id])}</span></li>`).join('')}</ul>
+      ${isMgr() ? stageEditor(f) : `<ul class="list">${STAGES.map(s => `<li>${esc(stageName(s.id))}<span class="r strong">${pct(f.stages[s.id] || 0)}</span></li>`).join('')}</ul>`}
     </main></div>`,
+    mount(root) {
+      const form = root.querySelector('[data-stages]');
+      if (!form) return;
+      form.onsubmit = async e => {
+        e.preventDefault();
+        const stages = Object.fromEntries(STAGES.map(s => [s.id, +form.elements[s.id].value]));
+        try { await saveStages(f.id, stages); toast(t('saved')); } catch (err) { fail(err); }
+      };
+      root.querySelector('[data-team]').onchange = async ev => {
+        try { await setFarmTeam(f.id, ev.target.value); toast(t('saved')); } catch (err) { fail(err); }
+      };
+    },
   };
+}
+
+// Management can correct progress directly (e.g. when loading an existing project) and move a farm between teams.
+function stageEditor(f) {
+  const opts = v => Array.from({ length: 21 }, (_, i) => i * 5).map(p => `<option value="${p}" ${p === (v || 0) ? 'selected' : ''}>${p}%</option>`).join('');
+  return `<div class="card flat stack">
+    <label class="form"><span class="eyebrow">${esc(t('team'))}</span>
+      <select class="input" data-team><option value="">${esc(t('no_team'))}</option>
+        ${state.teams.map(tm => `<option value="${esc(tm.id)}" ${tm.id === f.teamId ? 'selected' : ''}>${esc(tm.name)}</option>`).join('')}</select></label>
+    <form data-stages class="stack"><div class="eyebrow">${esc(t('edit_progress'))}</div>
+      <div class="stage-edit">${STAGES.map(s => `<label for="st-${s.id}">${esc(stageName(s.id))}</label>
+        <select class="input" id="st-${s.id}" name="${s.id}">${opts(f.stages[s.id])}</select>`).join('')}</div>
+      <button class="btn sm" type="submit" style="align-self:flex-start">${esc(t('save'))}</button></form>
+  </div>`;
 }
 
 function page(f, title, inner, mount) {
@@ -50,6 +76,7 @@ export function farmSubView({ farmId, sub }) {
 
 function locationPage(f) {
   const { lat, lng } = f.gps;
+  if (!lat && !lng) return page(f, t('location'), `<div class="empty">—</div>`);
   const last = [...state.reports].filter(r => r.farmId === f.id && r.location?.lat != null).sort((a, b) => b.submittedAt - a.submittedAt)[0];
   return page(f, t('location'), `
     <div class="card flat stack">
@@ -84,10 +111,7 @@ function drawingPage(f) {
     if (b) b.onclick = async () => {
       const file = await pickPhoto(false);
       if (!file) return;
-      const rec = await savePhoto(file, { farmId: f.id, stage: 'drawing', kind: 'drawing', stamp: false });
-      f.drawingPhotoId = rec.id;
-      await save();
-      window.dispatchEvent(new Event('rerender'));
+      try { await setDrawing(f.id, file); toast(t('saved')); } catch (err) { fail(err); }
     };
     await hydratePhotos(root);
   });
@@ -105,9 +129,11 @@ function boqPage(f) {
   root => {
     root.querySelectorAll('input[data-i]').forEach(inp => inp.oninput = () => { f.boq[+inp.dataset.i][inp.dataset.k] = inp.value; });
     const add = root.querySelector('[data-act=add]');
-    if (add) add.onclick = () => { f.boq.push({ item: '', unit: '', qty: '' }); save().then(() => window.dispatchEvent(new Event('rerender'))); };
+    if (add) add.onclick = () => { f.boq.push({ item: '', unit: '', qty: '' }); window.dispatchEvent(new Event('rerender')); };
     const sv = root.querySelector('[data-act=save]');
-    if (sv) sv.onclick = async () => { f.boq = f.boq.filter(r => r.item.trim()); await save(); toast(t('saved')); };
+    if (sv) sv.onclick = async () => {
+      try { await saveBoq(f.id, f.boq.filter(r => String(r.item).trim())); toast(t('saved')); } catch (err) { fail(err); }
+    };
   });
 }
 
@@ -123,9 +149,8 @@ export function photoGrid(photos, { approve = false } = {}) {
 }
 export function bindApprove(root) {
   root.querySelectorAll('[data-approve]').forEach(cb => cb.onchange = async () => {
-    photoMeta(cb.dataset.approve).approved = cb.checked;
-    await save();
-    toast(t('saved'));
+    try { await setPhotoApproved(cb.dataset.approve, cb.checked); toast(t('saved')); }
+    catch (err) { cb.checked = !cb.checked; fail(err); }
   });
 }
 
@@ -151,8 +176,9 @@ function historyPage(f) {
 
 export function issueCard(i, { manage = false } = {}) {
   const viewer = getLang();
-  const tr = i.lang !== viewer
-    ? `<a class="small" target="_blank" rel="noopener" href="https://translate.google.com/?sl=${i.lang}&tl=${viewer}&op=translate&text=${encodeURIComponent(i.note)}">${esc(t('translate'))}</a>` : '';
+  // Workers may type in any language whatever their screen language, so let Google detect it.
+  const tr = i.note
+    ? `<a class="small" target="_blank" rel="noopener" href="https://translate.google.com/?sl=auto&tl=${viewer}&op=translate&text=${encodeURIComponent(i.note)}">${esc(t('translate'))}</a>` : '';
   return `<div class="card flat stack">
     <div class="row between"><span class="eyebrow">${esc(i.farmId)} · ${esc(stageName(i.stage))} / ${esc(t('cat_' + i.category))}</span>
       <span class="tag ${i.status === 'open' ? 'warn' : 'ok'}">${esc(t(i.status))}</span></div>
@@ -165,9 +191,7 @@ export function issueCard(i, { manage = false } = {}) {
 }
 export function bindResolve(root) {
   root.querySelectorAll('[data-resolve]').forEach(b => b.onclick = async () => {
-    Object.assign(issue(b.dataset.resolve), { status: 'resolved', resolvedAt: Date.now() });
-    await save();
-    window.dispatchEvent(new Event('rerender'));
+    try { await resolveIssue(b.dataset.resolve); } catch (err) { fail(err); }
   });
 }
 
@@ -201,7 +225,7 @@ export function reportView({ reportId }) {
       <div class="muted">${esc(team(r.teamId).name)} / ${esc(u?.name)} · ${esc(t('submitted_at', { t: timeLabel(r.submittedAt) }))}</div>
       <div class="grid ${mgr ? 'c2' : ''} stack">
         <div class="card flat"><div class="tbl-wrap"><table class="tbl"><tbody>${rows}</tbody></table></div>
-          <div style="margin-top:12px"><div class="strong">${r.items.length} / ${r.items.length} ${esc(t('reviewed'))} · ${photos.length} ${esc(t('photos_n'))}</div>
+          <div style="margin-top:12px"><div class="strong">${r.items.length} / ${r.items.length} ${esc(t('reviewed'))} · ${photos.length} ${esc(photos.length === 1 ? t('photo_1') : t('photos_n'))}</div>
           <div style="${loc && !loc.verified ? 'color:var(--red)' : ''}">${esc(locLine)}</div></div></div>
         <div class="stack">
           ${r.issueId ? issueCard(issue(r.issueId), { manage: mgr }) : ''}

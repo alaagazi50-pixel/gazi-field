@@ -1,18 +1,22 @@
-// Entry point: boot, hash router, login and settings.
+// Entry point: boot, hash router, sign-in and settings.
 import { t, setLang, getLang, LANGS } from './i18n.js';
-import { state, loadState, save, me, user, team, resetAll } from './store.js';
+import { hhmm } from './data.js';
+import { state, configured, me, team, restoreSession, signIn, signOut, refresh, sync, save, pendingCount } from './store.js';
 import { esc, topbar, toast } from './ui.js';
+import { storageLimited } from './db.js';
 import { startConnectivityMonitor, onConnChange } from './connectivity.js';
 import { homeView, pickFarmView, updateView, doneView } from './field.js';
 import { farmHubView, farmSubView, reportView } from './farm.js';
 import { dashboardView, farmsListView } from './manage.js';
+import { peopleView } from './people.js';
 import { clientView, clientFarmView } from './client.js';
 
-export const APP_VERSION = '0.1.0';
+export const APP_VERSION = '0.2.0';
 
+// [path, view, roles allowed]. Roles: field (worker), manager, client.
 const ROUTES = [
-  ['/login', loginView],
   ['/settings', settingsView],
+  ['/sync', syncView, ['field']],
   ['/pick-farm', pickFarmView, ['field']],
   ['/update/:farmId', updateView, ['field']],
   ['/done/:reportId', doneView, ['field']],
@@ -21,6 +25,7 @@ const ROUTES = [
   ['/farm/:farmId/:sub', farmSubView, ['field', 'manager']],
   ['/manage', dashboardView, ['manager']],
   ['/manage/farms', farmsListView, ['manager']],
+  ['/manage/people', peopleView, ['manager']],
   ['/client', clientView, ['client', 'manager']],
   ['/client/farm/:farmId', clientFarmView, ['client', 'manager']],
 ];
@@ -41,17 +46,22 @@ let lastPath = null;
 async function render() {
   const path = (location.hash.slice(1) || '/').split('?')[0];
   const u = me();
-  if (!u && path !== '/login') { location.hash = '#/login'; return; }
   let m;
-  if (path === '/' && u) {
+  if (!u) m = { view: loginView, params: {} };
+  else if (path === '/login') { location.hash = homeFor(u); return; }
+  else if (path === '/') {
     if (u.role !== 'field') { location.hash = homeFor(u); return; }
     m = { view: homeView, params: {} };
-  } else m = match(path);
-  if (!m || (m.roles && !m.roles.includes(u.role))) { location.hash = u ? homeFor(u) : '#/login'; return; }
-
+  } else {
+    m = match(path);
+    if (!m || (m.roles && !m.roles.includes(u.role))) { location.hash = homeFor(u); return; }
+  }
   const out = await m.view(m.params);
   if (!out || !out.html) return;
   const root = document.getElementById('app');
+  // Don't wipe a field someone is typing in when background data arrives.
+  const typing = root.contains(document.activeElement) && /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName) && path === lastPath;
+  if (typing) return;
   const keepScroll = path === lastPath ? window.scrollY : 0;
   root.innerHTML = out.html;
   window.scrollTo(0, keepScroll);
@@ -59,30 +69,57 @@ async function render() {
   if (out.mount) await out.mount(root);
 }
 
-// ---------- Login ----------
+// ---------- Sign in ----------
+let loginError = '';
 function loginView() {
-  const group = role => state.users.filter(u => u.role === role).map(u => `<button class="userbtn" data-user="${u.id}">
-      <span class="av">${esc(u.name[0])}</span><span>${esc(u.name)}<small>${u.teamId ? esc(team(u.teamId).name) + ' · ' : ''}${esc(LANGS[u.lang])}</small></span></button>`).join('');
   return {
     html: `<div class="screen login"><main class="content">
       <img class="logo" src="assets/logo.jpg" alt="GAZI GROUP">
       <div class="brand">GAZI <span>FIELD</span>™</div>
       <h1 class="h1">${esc(t('tagline'))}</h1>
-      <div class="langs">${Object.entries(LANGS).map(([k, v]) => `<button data-lang="${k}" class="${getLang() === k ? 'on' : ''}">${v}</button>`).join('')}</div>
-      <div class="eyebrow" style="color:#9fd3a6">${esc(t('who'))}</div>
-      <div class="eyebrow" style="color:#fff">${esc(t('field_team'))}</div><div class="stack">${group('field')}</div>
-      <div class="eyebrow" style="color:#fff">${esc(t('management'))} · ${esc(t('client'))}</div><div class="stack">${group('manager')}${group('client')}</div>
+      <div class="langs">${Object.entries(LANGS).map(([k, v]) => `<button type="button" data-lang="${k}" class="${getLang() === k ? 'on' : ''}">${v}</button>`).join('')}</div>
+      ${configured ? `<form class="form" data-login>
+        <label style="color:#fff">${esc(t('username_or_email'))}<input class="input" name="id" id="login-id" autocomplete="username" autocapitalize="none" required></label>
+        <label style="color:#fff">${esc(t('password'))}<input class="input" name="pw" id="login-pw" type="password" autocomplete="current-password" required></label>
+        ${loginError ? `<div class="err">${esc(t(loginError))}</div>` : ''}
+        <button class="btn" type="submit" style="background:#fff;color:var(--green)">${esc(t('sign_in'))}</button>
+      </form>` : `<div class="err">${esc(t('not_configured'))}</div>`}
+      <div class="small" style="opacity:.6">v${APP_VERSION}</div>
     </main></div>`,
     mount(root) {
-      root.querySelectorAll('[data-lang]').forEach(b => b.onclick = () => { setLang(b.dataset.lang); render(); });
-      root.querySelectorAll('[data-user]').forEach(b => b.onclick = async () => {
-        const u = user(b.dataset.user);
-        state.session = { userId: u.id, lang: u.lang };
-        setLang(u.lang);
-        await save();
-        location.hash = homeFor(u);
-      });
+      root.querySelectorAll('[data-lang]').forEach(b => b.onclick = () => { setLang(b.dataset.lang); try { localStorage.setItem('lang', b.dataset.lang); } catch { /* ignore */ } render(); });
+      const form = root.querySelector('[data-login]');
+      if (!form) return;
+      form.onsubmit = async e => {
+        e.preventDefault();
+        const btn = form.querySelector('[type=submit]');
+        btn.disabled = true;
+        btn.textContent = t('signing_in');
+        try {
+          const u = await signIn(form.elements.id.value, form.elements.pw.value);
+          loginError = '';
+          setLang(u.lang);
+          location.hash = homeFor(u);
+          render();
+        } catch (err) {
+          loginError = ['wrong_login', 'no_access'].includes(err.message) ? err.message : 'sync_failed';
+          render();
+        }
+      };
     },
+  };
+}
+
+// ---------- Upload queue (field) ----------
+function syncView() {
+  return {
+    html: `<div class="screen">${topbar({ back: '#/' })}<main class="content">
+      <h1 class="h1">${esc(t('waiting_sync', { n: pendingCount() }))}</h1>
+      <ul class="list">${state.outbox.map(o => `<li>${esc(o.report.farmId)} · ${esc(o.report.date)}<span class="r small ${o.error ? '' : 'muted'}" style="${o.error ? 'color:var(--red)' : ''}">${esc(o.error ? t('report_failed', { e: o.error }) : `${o.photoIds.length} ${t('photos_n')}`)}</span></li>`).join('')}</ul>
+      ${state.syncError ? `<div class="small" style="color:var(--red)">${esc(t('sync_failed'))}</div>` : ''}
+      <button class="btn" data-act="sync">${esc(t('sync_now'))}</button>
+    </main></div>`,
+    mount(root) { root.querySelector('[data-act=sync]').onclick = async () => { await sync(); if (!pendingCount()) location.hash = '#/'; }; },
   };
 }
 
@@ -95,31 +132,27 @@ function settingsView() {
   return {
     html: `<div class="screen">${topbar({ back: homeFor(u) })}<main class="content">
       <h1 class="h1">${esc(t('settings'))}</h1>
-      <div><div class="eyebrow muted">${esc(t('signed_in_as'))}</div><div class="h3">${esc(u.name)}${u.teamId ? ' · ' + esc(team(u.teamId).name) : ''}</div></div>
+      <div><div class="eyebrow muted">${esc(t('signed_in_as'))}</div>
+        <div class="h3">${esc(u.name)} · ${esc(t('role_' + u.role))}${u.role === 'field' ? ' · ' + esc(team(u.teamId).name) : ''}</div>
+        <div class="small muted">${esc(u.username)}${state.lastSync ? ` · ${esc(t('synced_at', { t: hhmm(state.lastSync) }))}` : ''}</div></div>
       <div class="stack"><div class="eyebrow muted">${esc(t('language'))}</div>
         <div class="langs dark">${Object.entries(LANGS).map(([k, v]) => `<button data-lang="${k}" class="${getLang() === k ? 'on' : ''}">${v}</button>`).join('')}</div></div>
       ${installPrompt ? `<button class="btn ghost" data-act="install">${esc(t('install_app'))}</button>` : ''}
-      <button class="btn ghost" data-act="switch">${esc(t('switch_user'))}</button>
+      <button class="btn ghost" data-act="refresh">${esc(t('refresh'))}</button>
       <span class="spacer"></span>
-      <button class="linkbtn" data-act="reset" style="color:var(--red);align-self:flex-start">${esc(t('reset_demo'))}</button>
-      <div class="card flat stack" data-confirm hidden><div>${esc(t('reset_confirm'))}</div>
-        <div class="btn-row"><button class="btn ghost sm" data-act="cancel" style="width:100%">${esc(t('no'))}</button>
-        <button class="btn warn sm" data-act="doreset" style="width:100%">${esc(t('reset_demo'))}</button></div></div>
+      <button class="btn ghost" data-act="signout">${esc(t('sign_out'))}</button>
       <div class="small muted">GAZI FIELD v${APP_VERSION} · GAZI GROUP</div>
     </main></div>`,
     mount(root) {
-      root.querySelectorAll('[data-lang]').forEach(b => b.onclick = async () => {
+      root.querySelectorAll('[data-lang]').forEach(b => b.onclick = () => {
         setLang(b.dataset.lang);
-        state.session.lang = b.dataset.lang;
-        await save();
+        try { localStorage.setItem('lang', b.dataset.lang); } catch { /* ignore */ }
         render();
       });
-      root.querySelector('[data-act=switch]').onclick = async () => { state.session = null; await save(); location.hash = '#/login'; };
-      const box = root.querySelector('[data-confirm]');
-      root.querySelector('[data-act=reset]').onclick = () => { box.hidden = false; };
-      root.querySelector('[data-act=cancel]').onclick = () => { box.hidden = true; };
-      root.querySelector('[data-act=doreset]').onclick = async () => {
-        await resetAll();
+      root.querySelector('[data-act=refresh]').onclick = () => refresh().then(() => toast(t('saved')));
+      root.querySelector('[data-act=signout]').onclick = async () => {
+        if (pendingCount()) { toast(t('cant_sign_out')); return; }
+        await signOut();
         location.hash = '#/login';
         render();
       };
@@ -131,18 +164,30 @@ function settingsView() {
 
 // ---------- Boot ----------
 (async function boot() {
-  await loadState();
-  setLang(state.session?.lang || me()?.lang || (navigator.language || 'en').slice(0, 2));
+  let saved = null;
+  try { saved = localStorage.getItem('lang'); } catch { /* ignore */ }
+  setLang(saved || (navigator.language || 'en').slice(0, 2));
   if ('serviceWorker' in navigator && location.protocol !== 'file:') {
     navigator.serviceWorker.register('sw.js').catch(err => console.warn('SW registration failed', err));
   }
   window.addEventListener('hashchange', render);
   window.addEventListener('rerender', render);
-  onConnChange(() => { if (!document.querySelector('textarea:focus, input:focus')) render(); });
   startConnectivityMonitor();
+
+  const u = await restoreSession().catch(err => { console.warn(err); return null; });
+  if (u && !saved) setLang(u.lang);
   render();
+  if (storageLimited) setTimeout(() => toast(t('storage_limited')), 800);
+  if (u) { refresh(); sync(); }
+
+  // Keep data fresh and the upload queue moving.
+  onConnChange(online => { if (online) sync(); render(); });
+  setInterval(() => { if (me() && document.visibilityState === 'visible') { sync(); refresh(); } }, 2 * 60e3);
+  document.addEventListener('visibilitychange', () => { if (me() && document.visibilityState === 'visible') { sync(); refresh(); } });
 })().catch(err => {
   console.error(err);
   document.getElementById('app').innerHTML = `<div class="screen"><main class="content"><h1 class="h1">GAZI FIELD</h1><p>${esc(err.message)}</p></main></div>`;
-  toast('Error');
 });
+
+// Keep drafts saved if the phone kills the page mid-update.
+window.addEventListener('pagehide', () => { save(); });

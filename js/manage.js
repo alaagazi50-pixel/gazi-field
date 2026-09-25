@@ -1,12 +1,12 @@
 // Management: "sees the day in seconds" dashboard and the farm list.
 import { t, getLang } from './i18n.js';
 import { STAGES, dateKey, hhmm, niceDate, farmProgress, farmStatus } from './data.js';
-import { state, save, user, team, teamFarm, reportFor } from './store.js';
-import { esc, stageName, topbar, timeLabel, connBlock, progressBar } from './ui.js';
+import { state, user, team, teamFarm, markFollowUp, refresh } from './store.js';
+import { esc, stageName, topbar, timeLabel, connBlock, progressBar, fail } from './ui.js';
 
 export function mgrNav(active) {
   const a = (k, href, label) => `<a class="${active === k ? 'on' : ''}" href="${href}">${esc(label)}</a>`;
-  return `<nav class="segmented">${a('dash', '#/manage', t('dashboard'))}${a('farms', '#/manage/farms', t('farms'))}${a('client', '#/client', t('client_portal'))}</nav>`;
+  return `<nav class="segmented">${a('dash', '#/manage', t('dashboard'))}${a('farms', '#/manage/farms', t('farms'))}${a('people', '#/manage/people', t('people'))}${a('client', '#/client', t('client_portal'))}</nav>`;
 }
 
 export function dashboardView() {
@@ -25,7 +25,7 @@ export function dashboardView() {
         <td>${esc(t('reported_by', { n: user(i.reportedBy)?.name || '—', t: hhmm(i.at) }))}</td>
         <td><a class="btn xs" href="${r ? `#/report/${r.id}` : `#/farm/${i.farmId}/issues`}">${esc(t('review'))}</a></td></tr>`;
     }),
-    ...missing.map(tm => {
+    ...missing.filter(tm => teamFarm(tm.id)).map(tm => {
       const f = teamFarm(tm.id);
       const fu = state.followUps[`${tm.id}|${today}`];
       return `<tr><td class="num">${esc(f.id)}</td><td>${esc(t('daily_report_missing'))}</td>
@@ -45,9 +45,10 @@ export function dashboardView() {
   // Each team's phone connectivity, taken from the latest report it sent.
   const teamRows = state.teams.map(tm => {
     const last = state.reports.filter(r => r.teamId === tm.id).sort((a, b) => b.submittedAt - a.submittedAt)[0];
-    const rep = reportFor(teamFarm(tm.id).id, today);
+    const tf = teamFarm(tm.id);
+    const rep = todays.find(r => r.teamId === tm.id);
     return `<div class="card flat stack">
-      <div class="row between"><strong>${esc(tm.name)} · ${esc(teamFarm(tm.id).id)}</strong>
+      <div class="row between"><strong>${esc(tm.name)} · ${esc(tf?.id || '—')}</strong>
         <span class="tag ${rep ? 'ok' : 'warn'}">${esc(rep ? `${t('reported')} ${hhmm(rep.submittedAt)}` : t('not_reported'))}</span></div>
       <div class="small muted">${esc(t('last_net'))}${last ? ` · ${esc(t('last_report'))} ${esc(timeLabel(last.submittedAt))}` : ''}</div>
       ${connBlock(last?.connectivity, { compact: true })}
@@ -56,7 +57,9 @@ export function dashboardView() {
 
   return {
     html: `<div class="screen wide">${topbar()}<main class="content">
-      <div class="row between">${mgrNav('dash')}<span class="eyebrow muted">${esc(niceDate(Date.now(), getLang()))}</span></div>
+      <div class="row between">${mgrNav('dash')}<span class="row"><span class="eyebrow muted">${esc(niceDate(Date.now(), getLang()))}${state.lastSync ? ` · ${esc(t('synced_at', { t: hhmm(state.lastSync) }))}` : ''}</span>
+        <button class="btn ghost xs" data-act="refresh">${esc(t('refresh'))}</button></span></div>
+      ${state.syncError ? `<div class="card alert flat small">${esc(t('sync_failed'))}</div>` : ''}
       <h1 class="h1">${esc(t('dashboard'))}</h1>
       <div class="card stack" style="gap:18px">
         <div class="eyebrow">GAZI FIELD · ${esc(state.project.name.toUpperCase())} · ${esc(t('today').toUpperCase())}</div>
@@ -76,10 +79,9 @@ export function dashboardView() {
     </main></div>`,
     mount(root) {
       root.querySelectorAll('[data-follow]').forEach(b => b.onclick = async () => {
-        state.followUps[`${b.dataset.follow}|${today}`] = Date.now();
-        await save();
-        window.dispatchEvent(new Event('rerender'));
+        try { await markFollowUp(b.dataset.follow, today); } catch (err) { fail(err); }
       });
+      root.querySelector('[data-act=refresh]').onclick = () => refresh();
     },
   };
 }

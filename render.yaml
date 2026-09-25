@@ -1,0 +1,21 @@
+# Render "Blueprint" for the GAZI FIELD website (optional alternative to GitHub Pages).
+# A static site: free, never sleeps, served from Render's global CDN, custom domains supported.
+# The database, logins and photos live in Supabase (see SETUP.md), so there is no server to run here.
+# Deploy: Render dashboard → New → Blueprint → pick the gazi-field repository → Apply.
+services:
+  - type: web
+    name: gazi-field
+    runtime: static
+    buildCommand: echo "No build step"
+    staticPublishPath: .
+    headers:
+      # Phones must always check for a new service worker, otherwise updates arrive late.
+      - path: /sw.js
+        name: Cache-Control
+        value: no-cache
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: Referrer-Policy
+        value: strict-origin-when-cross-origin
