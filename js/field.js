@@ -1,10 +1,9 @@
 // Field worker screens: choose a farm, the farm screen, and the daily update flow.
 import { t, getLang } from './i18n.js';
 import { STAGES, CATEGORIES, STEP, LOCATION_RADIUS_KM, dateKey, hhmm, farmProgress, distanceKm } from './data.js';
-import { state, save, me, farm, team, reportFor, reportIssues, savePhoto, photoMeta, queueReport, newId, dismissFailed,
-  rememberFarm, pushState, enablePush, testPush } from './store.js';
-import { esc, stageName, ICONS, topbar, photoImg, hydratePhotos, pct, connBlock, getPosition, pickPhoto, progressBar, farmTitle, toast, fail } from './ui.js';
-import { connectivitySummary, currentConn } from './connectivity.js';
+import { state, save, me, farm, team, reportFor, reportIssues, savePhoto, photoMeta, queueReport, queueIssue, newId, dismissFailed,
+  rememberFarm, activeFarms } from './store.js';
+import { esc, stageName, ICONS, topbar, photoImg, hydratePhotos, pct, getPosition, pickPhoto, progressBar, farmTitle, toast, fail } from './ui.js';
 
 const go = h => { location.hash = h; };
 let nearPos = null;        // set by "Near me": farms are then sorted by distance (GPS works without signal)
@@ -17,65 +16,85 @@ const greeting = () => {
 
 // Reports the server refused (e.g. someone already sent this farm's report today).
 function failedCards() {
-  return state.outbox.filter(o => o.error).map(o => `<div class="card alert flat stack">
-    <strong>${esc(o.report.farmId)} · ${esc(o.report.date)}</strong><div class="small">${esc(t('report_failed', { e: o.error }))}</div>
+  const failed = [...state.outbox.filter(o => o.error).map(o => ({ id: o.id, title: `${o.report.farmId} · ${o.report.date}`, error: o.error })),
+    ...(state.issueOutbox || []).filter(o => o.error).map(o => ({ id: o.id, title: `${o.farmId} · ${t('urgent_tag')}`, error: o.error }))];
+  return failed.map(o => `<div class="card alert flat stack">
+    <strong>${esc(o.title)}</strong><div class="small">${esc(t('report_failed', { e: o.error }))}</div>
     <button class="btn ghost xs" data-dismiss="${esc(o.id)}" style="align-self:flex-start">${esc(t('dismiss'))}</button></div>`).join('');
 }
 
-async function remindersCard() {
-  const s = await pushState();
-  if (s === 'on' || s === 'unsupported') return '';
-  if (s === 'denied') return `<div class="card flat small muted">${esc(t('push_blocked'))}</div>`;
-  return `<div class="card flat row between"><div class="stack" style="gap:2px;flex:1;min-width:180px"><strong>${esc(t('push_title'))}</strong>
-    <span class="small muted">${esc(t('push_why'))}</span></div><button class="btn sm" data-act="push">${esc(t('push_enable'))}</button></div>`;
-}
+const farmStatusTag = f => {
+  const today = dateKey();
+  const rep = reportFor(f.id, today);
+  if (rep) return `<span class="tag ok">✓ ${hhmm(rep.submittedAt)}</span>`;
+  if (state.drafts[`${f.id}|${today}`]) return `<span class="tag amber">${esc(t('in_progress_short'))}</span>`;
+  return '';
+};
+const farmRow = (f, extra = '') => `<li data-row="${esc((f.id + ' ' + f.name + ' ' + f.region).toLowerCase())}">
+  <a class="rowlink" href="#/work/${esc(f.id)}"><div style="flex:1;min-width:0"><div class="strong">${esc(farmTitle(f))}</div>
+    <div class="small muted">${esc(f.region)} · ${farmProgress(f)}%${extra}</div></div><span class="r">${farmStatusTag(f)}</span></a></li>`;
 
-// ---------------- Home: which farm are you at today? ----------------
+// ---------------- Home: two big buttons, the last farms, what was sent today ----------------
 export async function homeView() {
   const u = me();
   const today = dateKey();
   const mine = state.reports.filter(r => r.date === today && r.userId === u.id && !r.error);
-  const planned = u.teamId ? team(u.teamId).todayFarm : null;
-  const status = f => {
-    const rep = reportFor(f.id, today);
-    if (rep) return `<span class="tag ok">✓ ${hhmm(rep.submittedAt)}</span>`;
-    if (state.drafts[`${f.id}|${today}`]) return `<span class="tag amber">${esc(t('in_progress_short'))}</span>`;
-    return '';
-  };
-  const row = (f, extra = '') => `<li data-row="${esc((f.id + ' ' + f.name + ' ' + f.region).toLowerCase())}">
-    <a class="rowlink" href="#/work/${esc(f.id)}"><div style="flex:1;min-width:0"><div class="strong">${esc(farmTitle(f))}</div>
-      <div class="small muted">${esc(f.region)} · ${farmProgress(f)}%${extra}</div></div><span class="r">${status(f)}</span></a></li>`;
-  const dist = f => (nearPos && (f.gps.lat || f.gps.lng) ? distanceKm(nearPos, f.gps) : null);
-  const all = [...state.farms].sort((a, b) => nearPos ? (dist(a) ?? 1e9) - (dist(b) ?? 1e9) : a.id.localeCompare(b.id));
-  const recent = (state.recentFarms || []).map(farm).filter(Boolean);
-  const plannedFarm = planned && farm(planned);
-
+  const recent = (state.recentFarms || []).map(farm).filter(f => f && f.status !== 'cancelled').slice(0, 3);
   return {
     html: `<div class="screen">${topbar()}
     <main class="content">
-      <div><p class="greet">${esc(greeting())}<br>${esc(u.name)}.</p>${u.teamId ? `<div class="small upper" style="margin-top:8px">${esc(team(u.teamId).name)}</div>` : ''}</div>
+      <div><p class="greet">${esc(greeting())}<br>${esc(u.name)}.</p>${u.teamId ? `<div class="small upper muted" style="margin-top:6px">${esc(team(u.teamId).name)}</div>` : ''}</div>
       ${failedCards()}
-      ${mine.length ? `<div class="card dark flat stack"><div class="eyebrow" style="color:#9fd3a6">${esc(t('sent_today'))}</div>
-        ${mine.map(r => `<a href="#/report/${r.id}" style="color:#fff;text-decoration:none" class="row between"><span>✓ ${esc(farmTitle(farm(r.farmId) || { id: r.farmId }))}</span>
-          <span class="small">${hhmm(r.submittedAt)}${r.pending ? ' · ' + esc(t('pending_upload')) : ''}</span></a>`).join('')}</div>` : ''}
-      ${await remindersCard()}
+      <nav class="stack" style="gap:12px">
+        <a class="action primary" href="#/choose">${ICONS.info}<span><strong>${esc(t('daily_report'))}</strong><small>${esc(t('daily_report_hint'))}</small></span></a>
+        <a class="action warn" href="#/problem"><b aria-hidden="true">⚠</b><span><strong>${esc(t('urgent_btn'))}</strong><small>${esc(t('urgent_hint'))}</small></span></a>
+      </nav>
+      ${recent.length ? `<div class="stack" style="gap:6px"><div class="eyebrow muted">${esc(t('recent_farms'))}</div><ul class="list">${recent.map(f => farmRow(f)).join('')}</ul></div>` : ''}
+      ${mine.length ? `<div class="stack" style="gap:6px"><div class="eyebrow muted">${esc(t('sent_today'))}</div><ul class="list">
+        ${mine.map(r => `<li><a class="rowlink" href="#/report/${r.id}"><span style="flex:1">✓ ${esc(farmTitle(farm(r.farmId) || { id: r.farmId }))}</span>
+          <span class="r small muted">${hhmm(r.submittedAt)}${r.pending ? ' · ' + esc(t('pending_upload')) : ''}</span></a></li>`).join('')}</ul></div>` : ''}
+    </main></div>`,
+    mount(root) {
+      root.querySelectorAll('[data-dismiss]').forEach(b => b.onclick = () => dismissFailed(b.dataset.dismiss));
+    },
+  };
+}
+
+// ---------------- Choose the farm for the daily report ----------------
+export function chooseView() {
+  const u = me();
+  const planned = u.teamId ? team(u.teamId).todayFarm : null;
+  const plannedFarm = planned && farm(planned);
+  const dist = f => (nearPos && (f.gps.lat || f.gps.lng) ? distanceKm(nearPos, f.gps) : null);
+  const farms = activeFarms();
+  let list;
+  if (nearPos) {
+    list = `<ul class="list" data-all>${[...farms].sort((a, b) => (dist(a) ?? 1e9) - (dist(b) ?? 1e9)).map(f => farmRow(f, dist(f) != null ? ` · ${dist(f).toFixed(1)} km` : '')).join('')}</ul>`;
+  } else {
+    const regions = [...new Set(farms.map(f => f.region))].sort();
+    list = `<div data-all class="stack">${regions.map(r => `<div class="stack" style="gap:6px" data-region><div class="eyebrow muted">${esc(r)}</div>
+      <ul class="list">${farms.filter(f => f.region === r).sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true })).map(f => farmRow(f)).join('')}</ul></div>`).join('')}</div>`;
+  }
+  return {
+    html: `<div class="screen">${topbar({ back: '#/' })}
+    <main class="content">
       <h1 class="h1" style="font-size:26px">${esc(t('which_farm'))}</h1>
       <div class="row" style="flex-wrap:nowrap">
         <input class="input" id="farm-search" data-search placeholder="${esc(t('search'))}" value="${esc(searchText)}" autocomplete="off" style="flex:1">
         <button class="btn ghost sm" data-act="near" style="white-space:nowrap">${esc(nearPos ? t('near_on') : t('near_me'))}</button>
       </div>
-      ${plannedFarm && !nearPos ? `<div class="stack" style="gap:6px"><div class="eyebrow muted">${esc(t('planned_for_team'))}</div><ul class="list">${row(plannedFarm)}</ul></div>` : ''}
-      ${recent.length && !nearPos ? `<div class="stack" style="gap:6px"><div class="eyebrow muted">${esc(t('recent_farms'))}</div><ul class="list">${recent.map(f => row(f)).join('')}</ul></div>` : ''}
-      <div class="stack" style="gap:6px"><div class="eyebrow muted">${esc(nearPos ? t('nearest_first') : t('all_farms'))} · ${all.length}</div>
-        <ul class="list" data-all>${all.map(f => row(f, dist(f) != null ? ` · ${dist(f).toFixed(1)} km` : '')).join('')}</ul></div>
+      ${plannedFarm && !nearPos && plannedFarm.status !== 'cancelled' ? `<div class="stack" style="gap:6px" data-planned><div class="eyebrow muted">${esc(t('planned_for_team'))}</div><ul class="list">${farmRow(plannedFarm)}</ul></div>` : ''}
+      ${list}
     </main></div>`,
     mount(root) {
-      root.querySelectorAll('[data-dismiss]').forEach(b => b.onclick = () => dismissFailed(b.dataset.dismiss));
       const input = root.querySelector('[data-search]');
       const filter = () => {
         searchText = input.value;
         const q = searchText.trim().toLowerCase();
-        root.querySelectorAll('[data-row]').forEach(li => { li.hidden = !!q && !li.dataset.row.includes(q); });
+        root.querySelectorAll('[data-all] [data-row]').forEach(li => { li.hidden = !!q && !li.dataset.row.includes(q); });
+        root.querySelectorAll('[data-region]').forEach(g => { g.hidden = !!q && !g.querySelector('[data-row]:not([hidden])'); });
+        const pl = root.querySelector('[data-planned]');
+        if (pl) pl.hidden = !!q;
       };
       input.oninput = filter;
       filter();
@@ -86,11 +105,6 @@ export async function homeView() {
         if (!p) { toast(t('location_unavailable')); return; }
         nearPos = p;
         window.dispatchEvent(new Event('rerender'));
-      };
-      const push = root.querySelector('[data-act=push]');
-      if (push) push.onclick = async () => {
-        try { await enablePush(); toast(t('push_on')); testPush().catch(() => {}); window.dispatchEvent(new Event('rerender')); }
-        catch (err) { fail(err); }
       };
     },
   };
@@ -107,7 +121,6 @@ export async function workView({ farmId }) {
   const today = dateKey();
   const rep = reportFor(f.id, today);
   const draft = state.drafts[`${f.id}|${today}`];
-  const conn = await connectivitySummary();
   const openIssues = state.issues.filter(i => i.farmId === f.id && i.status === 'open').length;
   const byMe = rep && rep.userId === me().id;
 
@@ -131,9 +144,9 @@ export async function workView({ farmId }) {
       </div>
       ${cta}
       <a class="btn ghost" href="#/farm/${f.id}">${ICONS.info} ${esc(t('farm_info'))}</a>
+      <a class="btn warn" href="#/problem/${f.id}">⚠ ${esc(t('urgent_btn'))}</a>
       <div class="small muted center">${esc(t('farm_info_hint'))}</div>
       ${openIssues ? `<a class="card alert flat" href="#/farm/${f.id}/issues" style="text-decoration:none">${esc(t('issues'))}: ${openIssues} ${esc(t('open'))}</a>` : ''}
-      <div class="card flat stack"><div class="eyebrow muted">${esc(t('conn_last_hours', { h: conn.hours }))}</div>${connBlock(conn, { compact: true })}</div>
     </main></div>`,
   };
 }
@@ -149,7 +162,11 @@ function getDraft(f) {
       issues: [], issueForm: null, issuesDone: false, location: null, startedAt: Date.now(),
     };
   }
-  const d = state.drafts[key];
+  let d = state.drafts[key];
+  if (d.items.map(i => i.stage).join() !== STAGES.map(s => s.id).join()) {   // started with the old stage list
+    delete state.drafts[key];
+    return getDraft(f);
+  }
   if (!d.issues) {   // draft started with v0.3 (single problem)
     d.issues = d.issue?.mode === 'report' && d.issue.category ? [{ category: d.issue.category, stage: d.issue.stage, note: d.issue.note, photoId: d.issue.photoId }] : [];
     d.issuesDone = d.issue?.mode != null;
@@ -290,7 +307,6 @@ export function updateView({ farmId }) {
         <button class="linkbtn" data-act="editissues" style="align-self:flex-start">${esc(d.issues.length ? t('edit_problems') : t('report_issue'))}</button>
         <div><div class="strong">${d.items.filter(i => i.action).length} / ${n} ${esc(t('reviewed'))} · ${photoCount} ${esc(photoCount === 1 ? t('photo_1') : t('photos_n'))}</div>
           <div style="${loc && !loc.verified ? 'color:var(--red)' : ''}">${esc(locLine)}</div></div>
-        <div class="card flat stack"><div class="eyebrow muted">${esc(t('connectivity'))}</div><div data-conn>…</div></div>
         <span class="spacer"></span>
         <button class="btn" data-act="submit">${esc(t('submit_day'))}</button>`;
       break;
@@ -300,8 +316,7 @@ export function updateView({ farmId }) {
   const backBtn = d.trail.length ? `<button class="iconbtn flip" data-act="back" aria-label="${esc(t('back'))}">${ICONS.back}</button>` : `<a class="iconbtn flip" href="#/work/${esc(f.id)}" aria-label="${esc(t('back'))}">${ICONS.back}</a>`;
   return {
     html: `<div class="screen">
-      <header class="topbar">${backBtn}<span class="brand">GAZI <span>FIELD</span></span><span class="muted small">· ${esc(f.id)}</span><span class="grow"></span>
-        ${currentConn() === false ? `<span class="pill off"><span class="dot"></span>${esc(t('offline'))}</span>` : ''}</header>
+      <header class="topbar">${backBtn}<span class="brand">GAZI <span>FIELD</span></span><span class="muted small">· ${esc(f.id)}</span><span class="grow"></span></header>
       <div class="flowbar"><i style="width:${progressW}%"></i></div>
       <main class="content">${body}</main></div>`,
 
@@ -360,7 +375,6 @@ export function updateView({ farmId }) {
       on('submit', () => submit(f, u, d));
 
       if (d.step === 'summary') {
-        connectivitySummary().then(s => { const el = root.querySelector('[data-conn]'); if (el) el.innerHTML = connBlock(s); });
         if (!d.location) {
           getPosition().then(p => {
             d.location = p
@@ -382,7 +396,7 @@ async function submit(f, u, d) {
     id: newId(), farmId: f.id, teamId: u.teamId, userId: u.id, date: d.date, submittedAt: now, issueId: null,
     items: d.items.map(({ stage, prev, next, action, photoId }) => ({ stage, prev, next, action, photoId })),
     location: d.location && { lat: d.location.lat, lng: d.location.lng, acc: d.location.acc, distKm: d.location.distKm, verified: !!d.location.verified },
-    connectivity: await connectivitySummary(undefined, now),
+    connectivity: null,
   };
   const lang = getLang();
   const issues = d.issues.map(i => ({ stage: i.stage, category: i.category, note: i.note, photoId: i.photoId, lang }));
@@ -412,5 +426,80 @@ export function doneView({ reportId }) {
       <div class="btn" style="cursor:default">${esc(r.farmId)} ${esc(t('updated'))}</div>
       <a class="btn ghost" href="#/">${esc(t('home'))}</a>
     </main></div>`,
+  };
+}
+
+// ---------------- Report a problem now (urgent, without the daily report) ----------------
+export function problemView({ farmId }) {
+  const u = me();
+  const d = state.drafts.__problem ||= { farmId: null, category: null, stage: null, note: '', photoId: null };
+  if (farmId && farm(farmId)) d.farmId = farmId;
+  const f = d.farmId && farm(d.farmId);
+  const commit = () => save().then(() => window.dispatchEvent(new Event('rerender')));
+
+  let body;
+  if (!f) {
+    const recent = (state.recentFarms || []).map(farm).filter(x => x && x.status !== 'cancelled');
+    const rest = activeFarms().filter(x => !recent.includes(x)).sort((a, b) => a.id.localeCompare(b.id));
+    const row = x => `<li data-row="${esc((x.id + ' ' + x.name + ' ' + x.region).toLowerCase())}"><button class="linkbtn rowlink" data-farm="${esc(x.id)}"
+      style="text-decoration:none;color:var(--ink);width:100%;display:flex;gap:12px;align-items:center;text-align:start">
+      <span style="flex:1"><strong>${esc(farmTitle(x))}</strong><br><span class="small muted">${esc(x.region)}</span></span></button></li>`;
+    body = `<h1 class="h1" style="font-size:26px">${esc(t('urgent_farm'))}</h1>
+      <input class="input" id="problem-search" data-search placeholder="${esc(t('search'))}" autocomplete="off">
+      <ul class="list">${[...recent, ...rest].map(row).join('')}</ul>`;
+  } else {
+    body = `<div class="banner warn">⚠ ${esc(t('urgent_title'))}</div>
+      <div class="row between"><div class="h2" style="font-size:22px">${esc(farmTitle(f))}</div>
+        ${farmId ? '' : `<button class="linkbtn" data-act="changefarm">${esc(t('change'))}</button>`}</div>
+      <div class="eyebrow">${esc(t('category'))}</div>
+      <div class="catgrid">${CATEGORIES.map(c => `<button class="cat ${d.category === c ? 'on' : ''}" data-cat="${c}">${esc(t('cat_' + c))}</button>`).join('')}</div>
+      <div class="eyebrow">${esc(t('which_stage'))} <span class="muted">(${esc(t('optional'))})</span></div>
+      <div class="chips">${[null, ...STAGES.map(x => x.id)].map(x => `<button class="cat ${d.stage === x ? 'on' : ''}" data-st="${x ?? ''}" style="padding:0 14px;flex:0 0 auto">${esc(stageName(x))}</button>`).join('')}</div>
+      <div class="eyebrow">${esc(t('take_choose_photo'))} <span class="muted">(${esc(t('optional'))})</span></div>
+      ${d.photoId ? `<button data-zoom="${d.photoId}" style="border:0;padding:0;background:none">${photoImg(d.photoId).replace('<img', '<img class="photo-preview"')}</button>` : ''}
+      <div class="btn-row"><button class="btn ghost sm" data-act="camera" style="width:100%">${ICONS.camera} ${esc(t('take_photo'))}</button>
+        <button class="btn ghost sm" data-act="gallery" style="width:100%">${esc(t('choose_from_phone'))}</button></div>
+      <textarea class="input" id="problem-note" data-note placeholder="${esc(t('describe'))}">${esc(d.note)}</textarea>
+      <button class="btn warn" data-act="send" ${d.category && (d.note.trim() || d.photoId) ? '' : 'disabled'}>${esc(t('urgent_send'))}</button>`;
+  }
+  return {
+    html: `<div class="screen">${topbar({ back: farmId ? `#/work/${farmId}` : '#/' })}<main class="content">${body}</main></div>`,
+    async mount(root) {
+      const on = (act, fn) => root.querySelectorAll(`[data-act=${act}]`).forEach(b => { b.onclick = fn; });
+      const search = root.querySelector('[data-search]');
+      if (search) search.oninput = () => {
+        const q = search.value.trim().toLowerCase();
+        root.querySelectorAll('[data-row]').forEach(li => { li.hidden = !!q && !li.dataset.row.includes(q); });
+      };
+      root.querySelectorAll('[data-farm]').forEach(b => b.onclick = () => { d.farmId = b.dataset.farm; commit(); });
+      on('changefarm', () => { d.farmId = null; commit(); });
+      root.querySelectorAll('[data-cat]').forEach(b => b.onclick = () => { d.category = b.dataset.cat; commit(); });
+      root.querySelectorAll('[data-st]').forEach(b => b.onclick = () => { d.stage = b.dataset.st || null; commit(); });
+      const note = root.querySelector('[data-note]');
+      if (note) note.oninput = () => {
+        d.note = note.value;
+        root.querySelector('[data-act=send]').disabled = !(d.category && (d.note.trim() || d.photoId));
+        save();
+      };
+      const capture = async useCamera => {
+        const file = await pickPhoto(useCamera);
+        if (!file) return;
+        const loc = await Promise.race([getPosition(4000), new Promise(r => setTimeout(() => r(null), 4500))]);
+        const rec = await savePhoto(file, { farmId: d.farmId, stage: d.stage, progress: null, kind: 'issue', loc });
+        d.photoId = rec.id;
+        commit();
+      };
+      on('camera', () => capture(true));
+      on('gallery', () => capture(false));
+      on('send', async () => {
+        const online = navigator.onLine;
+        await queueIssue(d.farmId, { category: d.category, stage: d.stage, note: d.note.trim(), photoId: d.photoId, lang: getLang() });
+        delete state.drafts.__problem;
+        await save();
+        toast(online ? t('urgent_sent') : t('urgent_queued'));
+        go(farmId ? `#/work/${farmId}` : '#/');
+      });
+      await hydratePhotos(root);
+    },
   };
 }

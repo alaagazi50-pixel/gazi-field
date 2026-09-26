@@ -1,14 +1,12 @@
-// Service worker: offline app shell, push reminders, automatic upload of reports queued offline,
-// and background connectivity probes.
-const CACHE = 'gazi-field-v0.4.0';
+// Service worker: offline app shell, push reminders, and automatic upload of reports queued offline.
+const CACHE = 'gazi-field-v0.5.2';
 const SHELL = [
   './', './index.html', './manifest.webmanifest', './css/app.css',
   './js/app.js', './js/i18n.js', './js/db.js', './js/data.js', './js/store.js', './js/ui.js',
-  './js/connectivity.js', './js/field.js', './js/farm.js', './js/manage.js', './js/client.js', './js/analysis.js',
+  './js/field.js', './js/farm.js', './js/manage.js', './js/client.js', './js/analysis.js',
   './js/config.js', './js/people.js', './js/vendor/supabase.js',
   './assets/logo.jpg', './assets/icon-192.png', './assets/icon-512.png', './assets/icon-maskable.png', './assets/apple-touch-icon.png',
 ];
-const PROBE_URL = 'https://www.gstatic.com/generate_204';
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
@@ -23,8 +21,6 @@ self.addEventListener('activate', e => {
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET') return;
-  // Never answer the connectivity probe from cache.
-  if (url.href.startsWith(PROBE_URL) || url.searchParams.has('probe')) return;
 
   if (url.origin === location.origin) {
     // Network first so updates land quickly; cache when offline.
@@ -95,7 +91,7 @@ async function uploadQueued() {
   if (!cfg || !me) return;
   const localKey = `local:${me.id}`;
   const local = await kvGet(localKey);
-  if (!local?.outbox?.some(o => !o.error)) return;
+  if (!local?.outbox?.some(o => !o.error) && !local?.issueOutbox?.some(o => !o.error)) return;
 
   const ref = new URL(cfg.url).hostname.split('.')[0];
   const authKey = `auth:sb-${ref}-auth-token`;
@@ -114,24 +110,46 @@ async function uploadQueued() {
   const H = { apikey: cfg.key, Authorization: `Bearer ${session.access_token}` };
   const sent = [];
 
+  async function uploadPhotoRec(pid) {
+    const p = (local.pendingPhotos || []).find(x => x.id === pid);
+    if (!p) return;
+    const stored = await photoGet(p.id);
+    if (!stored) throw new Error('photo missing on phone');
+    const up = await fetch(`${cfg.url}/storage/v1/object/photos/${p.path}`, { method: 'POST', headers: { ...H, 'Content-Type': 'image/jpeg' }, body: stored.blob });
+    if (!up.ok && !/exist|duplicate/i.test(await up.text())) throw new Error(`photo upload ${up.status}`);
+    const row = await fetch(`${cfg.url}/rest/v1/photos`, {
+      method: 'POST', headers: { ...H, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+      body: JSON.stringify({ id: p.id, farm_id: p.farmId, stage: p.stage, progress: p.progress, kind: p.kind, label: p.label, path: p.path,
+        taken_at: new Date(p.takenAt).toISOString(), user_id: p.userId, team_id: p.teamId, loc: p.loc }),
+    });
+    if (!row.ok && row.status !== 409) throw new Error(`photo record ${row.status}`);
+    local.pendingPhotos = local.pendingPhotos.filter(x => x.id !== p.id);
+    await kvSet(localKey, local);
+  }
+
+  // urgent problems first
+  for (const o of local.issueOutbox || []) {
+    if (o.error) continue;
+    for (const pid of o.photoIds || []) await uploadPhotoRec(pid);
+    const res = await fetch(`${cfg.url}/rest/v1/rpc/report_issue`, {
+      method: 'POST', headers: { ...H, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ p_id: o.id, p_farm: o.farmId, p_issue: o.issue, p_at: new Date(o.queuedAt).toISOString() }),
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      if (/Unknown farm|Not allowed|Photo missing/.test(text)) { o.error = JSON.parse(text).message || text; await kvSet(localKey, local); continue; }
+      throw new Error(`problem ${res.status}`);
+    }
+    local.issueOutbox = local.issueOutbox.filter(x => x.id !== o.id);
+    await kvSet(localKey, local);
+    sent.push(`⚠ ${o.farmId}`);
+    fetch(`${cfg.url}/functions/v1/reminders`, { method: 'POST', headers: { ...H, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'urgent', issue_id: o.id }) }).catch(() => {});
+  }
+
   for (const o of local.outbox) {
     if (o.error) continue;
-    for (const pid of o.photoIds || []) {
-      const p = (local.pendingPhotos || []).find(x => x.id === pid);
-      if (!p) continue;
-      const stored = await photoGet(p.id);
-      if (!stored) throw new Error('photo missing on phone');
-      const up = await fetch(`${cfg.url}/storage/v1/object/photos/${p.path}`, { method: 'POST', headers: { ...H, 'Content-Type': 'image/jpeg' }, body: stored.blob });
-      if (!up.ok && !/exist|duplicate/i.test(await up.text())) throw new Error(`photo upload ${up.status}`);
-      const row = await fetch(`${cfg.url}/rest/v1/photos`, {
-        method: 'POST', headers: { ...H, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
-        body: JSON.stringify({ id: p.id, farm_id: p.farmId, stage: p.stage, progress: p.progress, kind: p.kind, label: p.label, path: p.path,
-          taken_at: new Date(p.takenAt).toISOString(), user_id: p.userId, team_id: p.teamId, loc: p.loc }),
-      });
-      if (!row.ok && row.status !== 409) throw new Error(`photo record ${row.status}`);
-      local.pendingPhotos = local.pendingPhotos.filter(x => x.id !== p.id);
-      await kvSet(localKey, local);
-    }
+    for (const pid of o.photoIds || []) await uploadPhotoRec(pid);
     const r = o.report;
     const issues = o.issues || (o.issue ? [o.issue] : []);
     const res = await fetch(`${cfg.url}/rest/v1/rpc/submit_report`, {
@@ -141,7 +159,7 @@ async function uploadQueued() {
     });
     if (!res.ok) {
       const text = await res.text();
-      if (/ALREADY_SUBMITTED|Only field workers|Unknown farm/.test(text)) {
+      if (/ALREADY_SUBMITTED|Only field workers|Unknown farm|was not reviewed|Invalid progress|Photo missing/.test(text)) {
         o.error = (JSON.parse(text).message || text).replace('ALREADY_SUBMITTED: ', '');
         await kvSet(localKey, local);
         continue;
@@ -157,16 +175,4 @@ async function uploadQueued() {
   }
 }
 
-// ----- connectivity samples while the app is closed (where Periodic Background Sync is available) -----
-async function probeAndSave(src) {
-  let online = false;
-  const local = ['localhost', '127.0.0.1'].includes(location.hostname);
-  const url = local ? PROBE_URL : new URL('assets/probe.txt', self.registration.scope).href;
-  try { await fetch(`${url}?probe=${Date.now()}`, { mode: local ? 'no-cors' : 'same-origin', cache: 'no-store' }); online = true; } catch { /* offline */ }
-  await dbOp('conn', 'readwrite', s => { s.put({ t: Date.now(), online, src }); });
-}
-self.addEventListener('periodicsync', e => { if (e.tag === 'conn-check') e.waitUntil(probeAndSave('sw-periodic')); });
-self.addEventListener('sync', e => {
-  if (e.tag === 'gazi-upload') e.waitUntil(probeAndSave('sw-sync').then(uploadQueued));   // a failure makes the browser retry later
-  else e.waitUntil(probeAndSave('sw-sync'));
-});
+self.addEventListener('sync', e => { if (e.tag === 'gazi-upload') e.waitUntil(uploadQueued()); });   // a failure makes the browser retry later

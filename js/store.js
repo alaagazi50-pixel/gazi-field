@@ -4,7 +4,7 @@
 // then refreshed from the server. Field reports are queued in an outbox and uploaded automatically
 // when the phone has internet (by the page, or by the service worker when the app is closed).
 import { SUPABASE_URL, SUPABASE_ANON_KEY, USERNAME_DOMAIN, ADMIN_FUNCTION, REMINDER_FUNCTION, VAPID_PUBLIC_KEY } from './config.js';
-import { kvGet, kvSet, kvDel, putPhoto, getPhoto, getConnSince } from './db.js';
+import { kvGet, kvSet, kvDel, putPhoto, getPhoto } from './db.js';
 import { photoLabel } from './data.js';
 
 export const configured = !!(SUPABASE_URL && SUPABASE_ANON_KEY && window.supabase);
@@ -36,7 +36,7 @@ if (configured) kvSet('cfg', { url: SUPABASE_URL, key: SUPABASE_ANON_KEY }).catc
 
 const empty = () => ({
   me: null, project: { name: 'GAZI FIELD', country: '' }, teams: [], users: [], farms: [], reports: [], issues: [], photos: [], followUps: {},
-  phones: [], drafts: {}, farmPick: {}, recentFarms: [], outbox: [], pendingPhotos: [], lastSync: null, syncError: null,
+  drafts: {}, farmPick: {}, recentFarms: [], outbox: [], issueOutbox: [], pendingPhotos: [], lastSync: null, syncError: null,
 });
 export let state = empty();
 
@@ -49,9 +49,9 @@ export const isMgr = u => ['manager', 'supervisor'].includes(u?.role);
 // ---------- row mappers (database → shapes the views use) ----------
 const ms = v => (v ? new Date(v).getTime() : null);
 const mapProfile = p => ({ id: p.id, name: p.full_name, username: p.username, role: p.role === 'worker' ? 'field' : p.role, teamId: p.team_id, lang: p.lang, active: p.active });
-const mapFarm = f => ({ id: f.id, name: f.name || '', region: f.region, gps: { lat: f.lat ?? 0, lng: f.lng ?? 0 }, teamId: f.team_id, stages: f.stages || {}, boq: f.boq || [], drawingPhotoId: f.drawing_photo_id });
+const mapFarm = f => ({ id: f.id, name: f.name || '', region: f.region, gps: { lat: f.lat ?? 0, lng: f.lng ?? 0 }, teamId: f.team_id, stages: f.stages || {}, boq: f.boq || [], drawingPhotoId: f.drawing_photo_id, details: f.details || {}, status: f.status || 'active' });
 const mapReport = r => ({ id: r.id, farmId: r.farm_id, teamId: r.team_id, userId: r.user_id, date: r.date, submittedAt: ms(r.submitted_at), issueId: r.issue_id, items: r.items, location: r.location, connectivity: r.connectivity });
-const mapIssue = i => ({ id: i.id, farmId: i.farm_id, reportId: i.report_id ?? null, stage: i.stage, category: i.category, note: i.note, lang: i.lang, photoId: i.photo_id, reportedBy: i.reported_by, teamId: i.team_id, at: ms(i.at), status: i.status, resolvedAt: ms(i.resolved_at) });
+const mapIssue = i => ({ id: i.id, farmId: i.farm_id, reportId: i.report_id ?? null, urgent: !!i.urgent, stage: i.stage, category: i.category, note: i.note, lang: i.lang, photoId: i.photo_id, reportedBy: i.reported_by, teamId: i.team_id, at: ms(i.at), status: i.status, resolvedAt: ms(i.resolved_at) });
 const mapPhoto = p => ({ id: p.id, label: p.label, takenAt: ms(p.taken_at), farmId: p.farm_id, stage: p.stage, progress: p.progress, kind: p.kind, userId: p.user_id, teamId: p.team_id, loc: p.loc, approved: p.approved, path: p.path });
 const mapTeam = t => ({ id: t.id, name: t.name, todayFarm: t.today_farm_id });
 
@@ -60,8 +60,8 @@ const localKey = () => `local:${state.me?.id}`;
 const cacheKey = () => `cache:${state.me?.id}`;
 export function save() {
   if (!state.me) return Promise.resolve();
-  const { drafts, farmPick, recentFarms, outbox, pendingPhotos } = state;
-  return kvSet(localKey(), { drafts, farmPick, recentFarms, outbox, pendingPhotos });
+  const { drafts, farmPick, recentFarms, outbox, issueOutbox, pendingPhotos } = state;
+  return kvSet(localKey(), { drafts, farmPick, recentFarms, outbox, issueOutbox, pendingPhotos });
 }
 function saveCache(server) { return kvSet(cacheKey(), server); }
 
@@ -72,7 +72,6 @@ function applyServer(server) {
     teams: server.teams.map(mapTeam), users: server.profiles.map(mapProfile), farms: server.farms.map(mapFarm),
     reports: server.reports.map(mapReport), issues: server.issues.map(mapIssue), photos: server.photos.map(mapPhoto),
     followUps: Object.fromEntries(server.followUps.map(f => [`${f.team_id}|${f.date}`, ms(f.at)])),
-    phones: (server.phones || []).map(p => ({ userId: p.user_id, samples: p.samples.map(([t, online]) => ({ t, online })), lastOnline: ms(p.last_online), lastSeen: ms(p.last_seen) })),
     lastSync: server.at,
   });
   const me = state.users.find(u => u.id === state.me.id);
@@ -80,6 +79,11 @@ function applyServer(server) {
   overlayLocal();
 }
 function overlayLocal() {
+  for (const o of state.issueOutbox || []) {
+    if (state.issues.some(i => i.id === o.id)) continue;
+    state.issues.push({ id: o.id, farmId: o.farmId, reportId: null, urgent: true, stage: o.issue.stage, category: o.issue.category, note: o.issue.note,
+      lang: o.issue.lang, photoId: o.issue.photoId, reportedBy: state.me?.id, teamId: state.me?.teamId, at: o.queuedAt, status: 'open', pending: true, error: o.error || null });
+  }
   for (const p of state.pendingPhotos) if (!state.photos.some(x => x.id === p.id)) state.photos.push({ ...p, pending: true });
   for (const o of state.outbox) {
     if (state.reports.some(r => r.id === o.id)) continue;
@@ -141,6 +145,7 @@ async function loadLocal() {
   const [local, cache] = await Promise.all([kvGet(localKey()), kvGet(cacheKey())]);
   if (local) Object.assign(state, local);
   state.recentFarms ||= [];
+  state.issueOutbox ||= [];
   if (cache) applyServer(cache);
   else overlayLocal();
 }
@@ -158,7 +163,7 @@ async function doRefresh() {
   const q = (p) => p.then(({ data, error }) => { if (error) throw error; return data; });
   const none = Promise.resolve([]);
   try {
-    const [project, teams, profiles, farms, photos, reports, issues, followUps, phones] = await Promise.all([
+    const [project, teams, profiles, farms, photos, reports, issues, followUps] = await Promise.all([
       q(sb.from('project').select('*').maybeSingle()),
       role === 'client' ? none : q(sb.from('teams').select('*').order('id')),
       q(sb.from('profiles').select('*').order('full_name')),
@@ -167,12 +172,10 @@ async function doRefresh() {
       role === 'client' ? none : q(sb.from('reports').select('*').gte('date', since).order('submitted_at')),
       role === 'client' ? none : q(sb.from('issues').select('*').order('at')),
       mgr ? q(sb.from('follow_ups').select('*').gte('date', since)) : none,
-      // Older databases may not have phone_status yet (supabase/migrations/002): don't let that block the rest.
-      mgr ? q(sb.rpc('phone_status', { p_hours: 72 })).catch(() => []) : none,
     ]);
     const me = profiles.find(p => p.id === state.me.id);
     if (me && !me.active) { await signOut(); location.hash = '#/login'; return; }
-    const server = { project, teams, profiles, farms, photos, reports, issues, followUps, phones, at: Date.now() };
+    const server = { project, teams, profiles, farms, photos, reports, issues, followUps, at: Date.now() };
     applyServer(server);
     state.syncError = null;
     await saveCache(server);
@@ -189,6 +192,7 @@ async function doRefresh() {
 export const me = () => state.me;
 export const user = id => state.users.find(u => u.id === id) || (state.me?.id === id ? state.me : null);
 export const farm = id => state.farms.find(f => f.id === id);
+export const activeFarms = () => state.farms.filter(f => f.status !== 'cancelled');
 export const team = id => state.teams.find(t => t.id === id) || { id, name: id ? `Team ${id}` : '—' };
 export function teamFarms(teamId) { return state.farms.filter(f => f.teamId === teamId); }
 export function teamFarm(teamId) {
@@ -202,7 +206,7 @@ export const reportIssues = r => {
   return list.length ? list : (r.issueId && issue(r.issueId) ? [issue(r.issueId)] : []);
 };
 export const photoMeta = id => state.photos.find(p => p.id === id);
-export const pendingCount = () => state.outbox.filter(o => !o.error).length;
+export const pendingCount = () => state.outbox.filter(o => !o.error).length + (state.issueOutbox || []).filter(o => !o.error).length;
 
 // Farms this worker opened recently, most recent first (for the farm chooser).
 export async function rememberFarm(farmId) {
@@ -228,30 +232,38 @@ export async function photoURL(id) {
   return url;
 }
 
-// Keep every farm's drawing on the phone so technical info can be opened without signal.
+// Keep drawings on the phone so technical info opens without signal. Drawings are large, so by default only
+// the farms this worker uses (recent + the team's planned farm); "Save all drawings" downloads the rest.
 let prefetching = false;
-async function prefetchDrawings() {
-  if (prefetching || !navigator.onLine || state.me?.role === 'client') return;
+async function prefetchDrawings(all = false) {
+  if (prefetching || !navigator.onLine || state.me?.role === 'client') return 0;
   prefetching = true;
+  let saved = 0;
   try {
-    for (const f of state.farms) {
+    const wanted = all ? state.farms : state.me?.role === 'field'
+      ? [...(state.recentFarms || []), state.me.teamId && team(state.me.teamId).todayFarm].map(farm).filter(Boolean)
+      : [];
+    for (const f of wanted) {
       if (!f.drawingPhotoId || await getPhoto(f.drawingPhotoId)) continue;
       const meta = photoMeta(f.drawingPhotoId);
       if (!meta?.path) continue;
       const { data } = await sb.storage.from('photos').download(meta.path);
-      if (data) await putPhoto({ id: f.drawingPhotoId, blob: data });
+      if (data) { await putPhoto({ id: f.drawingPhotoId, blob: data }); saved++; }
     }
   } catch (e) {
     console.warn('drawing prefetch stopped', e);
   } finally {
     prefetching = false;
   }
+  return saved;
 }
+export const downloadAllDrawings = () => prefetchDrawings(true);
 
 // Resize to ≤1600px, burn the record label into the image, keep it on the phone until uploaded.
 export async function savePhoto(file, meta) {
   const bmp = await loadImage(file);
-  const scale = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
+  const maxSide = meta.kind === 'drawing' ? 2400 : 1600;   // drawings keep enough detail to zoom in on the phone
+  const scale = Math.min(1, maxSide / Math.max(bmp.width, bmp.height));
   const w = Math.round(bmp.width * scale), h = Math.round(bmp.height * scale);
   const c = document.createElement('canvas');
   c.width = w; c.height = h;
@@ -269,7 +281,7 @@ export async function savePhoto(file, meta) {
     g.textBaseline = 'middle';
     g.fillText(`${label} · ${new Date(takenAt).toTimeString().slice(0, 5)}`, fs * .7, h - fs);
   }
-  const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', .82));
+  const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', meta.kind === 'drawing' ? .72 : .82));
   const id = newId();
   await putPhoto({ id, blob });
   const rec = {
@@ -319,40 +331,25 @@ export async function queueReport(report, issues) {
   sync();
 }
 
+// A problem reported straight away (urgent), without a daily report. Queued like reports when offline.
+export async function queueIssue(farmId, issue) {
+  const id = newId();
+  state.issueOutbox.push({ id, farmId, issue: { ...issue, urgent: true }, photoIds: [issue.photoId].filter(Boolean), queuedAt: Date.now() });
+  await rememberFarm(farmId);
+  overlayLocal();
+  await save();
+  requestBackgroundUpload();
+  sync();
+  return id;
+}
+
 // Ask the browser to wake the service worker when the phone is back online, even if the app is closed
 // (Android / Chrome). Elsewhere the upload happens the next time the app is opened.
 async function requestBackgroundUpload() {
   try {
     const reg = await swReg();
-    if (reg && 'sync' in reg && state.outbox.some(o => !o.error)) await reg.sync.register('gazi-upload');
+    if (reg && 'sync' in reg && pendingCount()) await reg.sync.register('gazi-upload');
   } catch { /* not supported */ }
-}
-
-// Workers' phones send their internet checks (made on the phone, online or not) so management can see
-// when each phone last had internet. Checks made offline are sent once the phone reconnects.
-let uploadingConn = false;
-let connAgain = false;   // a new check arrived while uploading: send it straight after
-export async function uploadConn() {
-  if (!configured || state.me?.role !== 'field' || !navigator.onLine) return;
-  if (uploadingConn) { connAgain = true; return; }
-  uploadingConn = true;
-  try {
-    const key = `connUp:${state.me.id}`;
-    const since = (await kvGet(key)) || Date.now() - 72 * 3600e3;
-    const samples = (await getConnSince(since + 1)).sort((a, b) => a.t - b.t);
-    for (let i = 0; i < samples.length; i += 500) {
-      const chunk = samples.slice(i, i + 500);
-      const rows = chunk.map(s => ({ user_id: state.me.id, t: new Date(s.t).toISOString(), online: !!s.online, src: s.src || null }));
-      const { error } = await sb.from('phone_connectivity').upsert(rows, { onConflict: 'user_id,t', ignoreDuplicates: true });
-      if (error) { console.warn('phone checks not sent', error.message); return; }
-      await kvSet(key, chunk[chunk.length - 1].t);
-    }
-  } catch (e) {
-    console.warn('phone checks not sent', e);
-  } finally {
-    uploadingConn = false;
-    if (connAgain) { connAgain = false; uploadConn(); }
-  }
 }
 
 let syncing = false;
@@ -360,16 +357,31 @@ let retryTimer = null;
 export async function sync() {
   if (!configured || !state.me || syncing) return;
   if (!navigator.onLine) {   // still no signal: look again in 20 s while reports are waiting
-    if (state.outbox.some(o => !o.error)) { clearTimeout(retryTimer); retryTimer = setTimeout(sync, 20e3); }
+    if (pendingCount()) { clearTimeout(retryTimer); retryTimer = setTimeout(sync, 20e3); }
     return;
   }
-  uploadConn();
-  if (!state.outbox.some(o => !o.error)) return;
+  if (!pendingCount()) return;
   syncing = true;
   clearTimeout(retryTimer);
   try {
     // The phone may have been offline for hours: getSession() refreshes an expired login first.
     await sb.auth.getSession();
+    // urgent problems first
+    for (const o of [...state.issueOutbox]) {
+      if (o.error) continue;
+      for (const pid of o.photoIds) {
+        const p = state.pendingPhotos.find(x => x.id === pid);
+        if (p) { await uploadPhoto(p); await save(); }
+      }
+      const { error } = await sb.rpc('report_issue', { p_id: o.id, p_farm: o.farmId, p_issue: o.issue, p_at: new Date(o.queuedAt).toISOString() });
+      if (error) {
+        if (/Unknown farm|Not allowed|Photo missing/.test(error.message)) { o.error = error.message; await save(); continue; }
+        throw error;
+      }
+      state.issueOutbox = state.issueOutbox.filter(x => x.id !== o.id);
+      await save();
+      alertManagers(o.id);
+    }
     for (const o of [...state.outbox]) {
       if (o.error) continue;
       for (const pid of o.photoIds) {
@@ -383,7 +395,7 @@ export async function sync() {
         p_location: r.location, p_connectivity: r.connectivity, p_submitted_at: new Date(r.submittedAt).toISOString(),
       });
       if (error) {
-        if (/ALREADY_SUBMITTED|Only field workers|Unknown farm/.test(error.message)) {
+        if (/ALREADY_SUBMITTED|Only field workers|Unknown farm|was not reviewed|Invalid progress|Photo missing/.test(error.message)) {
           o.error = error.message.replace('ALREADY_SUBMITTED: ', '');
           await save();
           continue;
@@ -407,6 +419,7 @@ export async function sync() {
 
 export async function dismissFailed(reportId) {
   state.outbox = state.outbox.filter(o => o.id !== reportId);
+  state.issueOutbox = state.issueOutbox.filter(o => o.id !== reportId);
   state.reports = state.reports.filter(r => r.id !== reportId);
   state.issues = state.issues.filter(i => i.reportId !== reportId);
   await save();
@@ -417,7 +430,7 @@ export async function dismissFailed(reportId) {
 export async function reloadLocal() {
   if (!state.me) return;
   const local = await kvGet(localKey());
-  if (local) Object.assign(state, { outbox: local.outbox || [], pendingPhotos: local.pendingPhotos || [] });
+  if (local) Object.assign(state, { outbox: local.outbox || [], issueOutbox: local.issueOutbox || [], pendingPhotos: local.pendingPhotos || [] });
   await refresh();
 }
 
@@ -459,6 +472,8 @@ async function reminders(body) {
   return data;
 }
 export const testPush = () => reminders({ action: 'test' });
+// Push the urgent problem to managers' and supervisors' phones (only if reminders are set up in Supabase).
+const alertManagers = issueId => reminders({ action: 'urgent', issue_id: issueId }).catch(() => {});
 export const remindTeam = teamId => reminders({ action: 'remind_team', team_id: teamId });
 
 // ---------- management actions (need a connection) ----------
@@ -479,6 +494,29 @@ export async function addFarm({ id, name, region, teamId, lat, lng }) {
 }
 export const saveFarmInfo = (farmId, { name, region, lat, lng }) =>
   run(sb.from('farms').update({ name: name || null, region, lat: lat ?? null, lng: lng ?? null, updated_at: new Date().toISOString() }).eq('id', farmId)).then(refresh);
+export const setFarmStatus = (farmId, status) => run(sb.from('farms').update({ status }).eq('id', farmId)).then(refresh);
+// Several drawings at once: each file name must contain the farm code (HM-01, HM01, "HM-01 plan.jpg"…).
+export const farmForFile = name => {
+  const m = name.toUpperCase().match(/\b([A-Z]{2,3})[-_ ]?(\d{1,3})\b/);
+  if (!m) return null;
+  return state.farms.find(f => f.id.toUpperCase().replace(/[-_ ]/g, '') === `${m[1]}${m[2].padStart(2, '0')}`) || null;
+};
+export async function uploadDrawings(files, onProgress) {
+  let done = 0;
+  const missing = [];
+  for (const [i, file] of files.entries()) {
+    const f = farmForFile(file.name);
+    if (!f) { missing.push(file.name); continue; }
+    onProgress?.(i + 1, files.length);
+    const rec = await savePhoto(file, { farmId: f.id, kind: 'drawing' });
+    await uploadPhoto(rec);
+    await save();
+    await run(sb.from('farms').update({ drawing_photo_id: rec.id }).eq('id', f.id));
+    done++;
+  }
+  await refresh();
+  return { done, missing };
+}
 export const setFarmTeam = (farmId, teamId) => run(sb.from('farms').update({ team_id: teamId || null }).eq('id', farmId)).then(refresh);
 export const setTodayFarm = (teamId, farmId) => run(sb.from('teams').update({ today_farm_id: farmId || null }).eq('id', teamId)).then(refresh);
 export const addTeam = (id, name) => run(sb.from('teams').insert({ id, name })).then(refresh);

@@ -53,6 +53,15 @@ This is what lets you create worker and client logins from inside the app.
    - **Client:** role *Client*. Give them the username and password.
 4. Under **Teams**, pick each team's farm for today. Open a farm page to correct its progress or move it to another team.
 
+## Updating to v0.5 (real stages, real farm data, urgent problems)
+Do these **in this order**.
+
+1. **Database:** open Supabase → **SQL Editor → + New query**, paste `supabase/migrations/004_real_stages_details_urgent.sql`, and click **Run**.
+2. **Real project data:** open **+ New query**, paste `private/real-data.sql`, and click **Run**. This replaces the demo farms, reports and problems with the 64 real PDAC farms. Accounts are kept. The `private` folder is never pushed to GitHub.
+3. **Publish:** in GitHub Desktop, commit `v0.5` and click **Push origin**. Check that no file from `private` or `project plans` is in the list.
+4. **Drawings:** sign in as a manager, open **Farms → Upload several drawings**, and select all the files in `Desktop\gaziapp\private\drawings`. Each one goes to its farm by the code in its file name.
+5. **If the `reminders` function is deployed:** replace its code with `supabase/functions/reminders/index.ts`, then **Deploy**. This makes urgent problems alert managers' phones.
+
 ## Updating to v0.4 (supervisor, any farm, several problems, reminders)
 Do these **in this order**. The new app needs the database update first.
 

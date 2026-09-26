@@ -229,3 +229,12 @@ textarea.input { min-height: 90px; resize: vertical; }
 .login .err { background: #fde3d8; color: #7a2c12; padding: 10px 12px; border-radius: 8px; font-size: 14px; }
 .stage-edit { display: grid; grid-template-columns: 1fr 110px; gap: 8px 12px; align-items: center; }
 .btn svg { width: 22px; height: 22px; flex: none; }
+.kv { display: grid; grid-template-columns: max-content 1fr; gap: 6px 14px; align-items: baseline; }
+details > summary { list-style: none; }
+details > summary::-webkit-details-marker { display: none; }
+.action { display: flex; align-items: center; gap: 16px; padding: 20px 18px; border-radius: 14px; text-decoration: none; min-height: 88px; }
+.action svg, .action b { width: 34px; height: 34px; flex: none; font-size: 30px; line-height: 34px; text-align: center; }
+.action strong { display: block; font-size: 20px; font-weight: 700; }
+.action small { display: block; font-size: 13px; opacity: .85; margin-top: 2px; }
+.action.primary { background: var(--green); color: #fff; }
+.action.warn { background: var(--orange); color: var(--ink); }

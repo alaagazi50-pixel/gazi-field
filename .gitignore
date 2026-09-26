@@ -5,3 +5,9 @@ IMG-*.jpg
 # Local secrets (Supabase access token etc.) - never commit
 .secrets/
 *.env
+
+# Client project files and real farm data - never publish (the repository is public)
+project plans/
+private/
+*.xlsx
+*.kmz

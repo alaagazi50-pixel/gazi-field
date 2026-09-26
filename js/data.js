@@ -1,13 +1,17 @@
 // Domain constants and pure helpers. Farms, teams and people live in the database (see supabase/).
 
+// The project's 9 stages, as in the PDAC progress tracking table (same list as gazi_stages() in the database).
+// Equal weights: each stage is 1/9 of a farm's progress.
 export const STAGES = [
-  { id: 'room', code: 'ROOM', weight: 15 },
-  { id: 'main_lines', code: 'MAIN LINES', weight: 20 },
-  { id: 'drip', code: 'DRIP', weight: 20 },
-  { id: 'sprinklers', code: 'SPRINKLERS', weight: 10 },
-  { id: 'electrical', code: 'ELECTRICAL', weight: 15 },
-  { id: 'generator', code: 'GENERATOR', weight: 10 },
-  { id: 'testing', code: 'TESTING', weight: 10 },
+  { id: 'concrete_floor', code: 'FLOOR', weight: 1 },
+  { id: 'room_structure', code: 'ROOM', weight: 1 },
+  { id: 'excavation', code: 'EXCAVATION', weight: 1 },
+  { id: 'room_irrigation', code: 'ROOM IRRIG', weight: 1 },
+  { id: 'drip_sprinklers', code: 'DRIP-SPRINK', weight: 1 },
+  { id: 'main_line', code: 'MAIN LINE', weight: 1 },
+  { id: 'secondary_lines', code: 'SECONDARY', weight: 1 },
+  { id: 'electricity', code: 'ELECTRICITY', weight: 1 },
+  { id: 'commissioning', code: 'HANDOVER', weight: 1 },
 ];
 export const CATEGORIES = ['access', 'material', 'equipment', 'technical', 'client', 'other'];
 export const STEP = 5;               // progress picker step, in %
@@ -26,7 +30,7 @@ export function niceDate(ms, lang) {
   return new Date(ms).toLocaleDateString(lang === 'ar' ? 'ar' : lang === 'pt' ? 'pt-PT' : 'en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
 }
 export function photoLabel(farmId, stageId, progress, ms) {
-  const code = stageId ? STAGES.find(s => s.id === stageId).code : 'ISSUE';
+  const code = STAGES.find(s => s.id === stageId)?.code || 'ISSUE';
   const p = progress == null ? '' : ` · ${String(progress).padStart(3, '0')}`;
   return `${farmId} · ${code}${p} · ${shortDate(ms)}`;
 }

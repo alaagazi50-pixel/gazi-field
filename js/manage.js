@@ -1,53 +1,35 @@
 // Management: "sees the day in seconds" dashboard and the farm list.
 import { t, getLang } from './i18n.js';
 import { STAGES, dateKey, hhmm, niceDate, farmProgress, farmStatus } from './data.js';
-import { state, me, user, team, teamFarm, farm, reportIssues, markFollowUp, remindTeam, refresh, addFarm } from './store.js';
-import { esc, stageName, topbar, timeLabel, connBlock, progressBar, fail, ago, toast, parseGps, farmTitle } from './ui.js';
-import { summarize } from './connectivity.js';
+import { state, me, user, team, teamFarm, farm, reportIssues, markFollowUp, remindTeam, refresh, addFarm, uploadDrawings, pushState, enablePush, testPush } from './store.js';
+import { esc, stageName, topbar, timeLabel, progressBar, fail, toast, parseGps, farmTitle } from './ui.js';
 
 export function mgrNav(active) {
   const a = (k, href, label) => `<a class="${active === k ? 'on' : ''}" href="${href}">${esc(label)}</a>`;
   return `<nav class="segmented">${a('dash', '#/manage', t('dashboard'))}${me()?.role === 'supervisor' ? a('analysis', '#/manage/analysis', t('analysis')) : ''}${a('farms', '#/manage/farms', t('farms'))}${a('people', '#/manage/people', t('people'))}${a('client', '#/client', t('client_portal'))}</nav>`;
 }
 
-let phoneHours = 12;
-
-// Every field worker's phone: when it last had internet, and a timeline. Oldest contact first.
-function phonesSection() {
-  const now = Date.now();
-  const workers = state.users.filter(u => u.role === 'field' && u.active).map(u => {
-    const p = state.phones.find(x => x.userId === u.id);
-    return { u, p, sum: p ? summarize(p.samples, phoneHours, now) : null };
-  }).sort((a, b) => (a.p?.lastOnline ?? 0) - (b.p?.lastOnline ?? 0) || a.u.name.localeCompare(b.u.name));
-  const seg = [12, 24, 72].map(h => `<a href="javascript:void 0" data-hours="${h}" class="${h === phoneHours ? 'on' : ''}">${h} h</a>`).join('');
-  const card = ({ u, p, sum }) => {
-    const stale = !p?.lastOnline || now - p.lastOnline > 6 * 3600e3;
-    return `<div class="card flat stack">
-      <div class="row between"><strong>${esc(u.name)}</strong><span class="small muted">${esc(team(u.teamId).name)}</span></div>
-      ${p?.lastOnline
-        ? `<div class="small ${stale ? 'strong' : ''}" style="${stale ? 'color:var(--red)' : ''}">${esc(t('last_internet', { t: timeLabel(p.lastOnline) }))} · ${esc(ago(p.lastOnline, now))}</div>`
-        : `<div class="small strong" style="color:var(--red)">${esc(t('no_phone_data'))}</div>`}
-      ${sum ? connBlock(sum, { compact: true, headline: false }) : ''}
-    </div>`;
-  };
-  return `<div class="row between"><div class="eyebrow">${esc(t('phones_title'))}</div><nav class="segmented" data-phonehours>${seg}</nav></div>
-    <div class="small muted">${esc(t('phones_note'))}</div>
-    ${workers.length ? `<div class="grid c3">${workers.map(card).join('')}</div>` : `<div class="empty">—</div>`}`;
+async function alertsCard() {
+  const st = await pushState();
+  if (st !== 'off') return '';
+  return `<div class="card flat row between"><div class="stack" style="gap:2px;flex:1;min-width:200px"><strong>${esc(t('urgent_alerts'))}</strong>
+    <span class="small muted">${esc(t('urgent_alerts_why'))}</span></div><button class="btn sm" data-act="alerts">${esc(t('push_enable'))}</button></div>`;
 }
 
-export function dashboardView() {
+export async function dashboardView() {
   const today = dateKey();
   const todays = state.reports.filter(r => r.date === today).sort((a, b) => b.submittedAt - a.submittedAt);
   const teamsReported = new Set(todays.map(r => r.teamId));
   const missing = state.teams.filter(tm => !teamsReported.has(tm.id));
-  const openIssues = state.issues.filter(i => i.status === 'open').sort((a, b) => b.at - a.at);
+  const openIssues = state.issues.filter(i => i.status === 'open' && !i.pending).sort((a, b) => (b.urgent - a.urgent) || b.at - a.at);
   const farmsUpdated = new Set(todays.map(r => r.farmId)).size;
 
   const issueReport = i => state.reports.find(r => r.id === i.reportId || r.issueId === i.id);
   const attention = [
     ...openIssues.map(i => {
       const r = issueReport(i);
-      return `<tr><td class="num">${esc(farmTitle(farm(i.farmId) || { id: i.farmId }))}</td><td>${esc(stageName(i.stage))} / ${esc(t('cat_' + i.category))}</td>
+      return `<tr style="${i.urgent ? 'background:#fdecE4' : ''}"><td class="num">${esc(farmTitle(farm(i.farmId) || { id: i.farmId }))}</td>
+        <td>${i.urgent ? `<span class="tag warn">⚠ ${esc(t('urgent_tag'))}</span> ` : ''}${esc(stageName(i.stage))} / ${esc(t('cat_' + i.category))}${i.note ? `<div class="small muted" dir="auto">${esc(i.note.slice(0, 90))}</div>` : ''}</td>
         <td>${esc(t('reported_by', { n: user(i.reportedBy)?.name || '—', t: hhmm(i.at) }))}</td>
         <td><a class="btn xs" href="${r ? `#/report/${r.id}` : `#/farm/${i.farmId}/issues`}">${esc(t('review'))}</a></td></tr>`;
     }),
@@ -69,16 +51,12 @@ export function dashboardView() {
       <td><a class="btn xs" href="#/report/${r.id}">${esc(t('review'))}</a></td></tr>`;
   }).join('');
 
-  // Each team's phone connectivity, taken from the latest report it sent.
   const teamRows = state.teams.map(tm => {
-    const last = state.reports.filter(r => r.teamId === tm.id).sort((a, b) => b.submittedAt - a.submittedAt)[0];
     const tf = teamFarm(tm.id);
     const rep = todays.find(r => r.teamId === tm.id);
     return `<div class="card flat stack">
       <div class="row between"><strong>${esc(tm.name)} · ${esc(tf?.id || '—')}</strong>
         <span class="tag ${rep ? 'ok' : 'warn'}">${esc(rep ? `${t('reported')} ${hhmm(rep.submittedAt)}` : t('not_reported'))}</span></div>
-      <div class="small muted">${esc(t('last_net'))}${last ? ` · ${esc(t('last_report'))} ${esc(timeLabel(last.submittedAt))}` : ''}</div>
-      ${connBlock(last?.connectivity, { compact: true })}
     </div>`;
   }).join('');
 
@@ -88,6 +66,7 @@ export function dashboardView() {
         <button class="btn ghost xs" data-act="refresh">${esc(t('refresh'))}</button></span></div>
       ${state.syncError ? `<div class="card alert flat small">${esc(t('sync_failed'))}</div>` : ''}
       <h1 class="h1">${esc(t('dashboard'))}</h1>
+      ${await alertsCard()}
       <div class="card stack" style="gap:18px">
         <div class="eyebrow">GAZI FIELD · ${esc(state.project.name.toUpperCase())} · ${esc(t('today').toUpperCase())}</div>
         <div class="grid c3">
@@ -103,7 +82,6 @@ export function dashboardView() {
       </div>
       <div class="eyebrow">${esc(t('teams_status'))}</div>
       <div class="grid c3">${teamRows}</div>
-      ${phonesSection()}
     </main></div>`,
     mount(root) {
       root.querySelectorAll('[data-follow]').forEach(b => b.onclick = async () => {
@@ -115,7 +93,10 @@ export function dashboardView() {
         } catch (err) { fail(err); }
       });
       root.querySelector('[data-act=refresh]').onclick = () => refresh();
-      root.querySelectorAll('[data-hours]').forEach(a => a.onclick = () => { phoneHours = +a.dataset.hours; window.dispatchEvent(new Event('rerender')); });
+      const alerts = root.querySelector('[data-act=alerts]');
+      if (alerts) alerts.onclick = async () => {
+        try { await enablePush(); toast(t('push_on')); testPush().catch(() => {}); window.dispatchEvent(new Event('rerender')); } catch (err) { fail(err); }
+      };
     },
   };
 }
@@ -128,7 +109,7 @@ export function farmsListView() {
     const p = farmProgress(f), lr = lastRep(f);
     const open = state.issues.filter(i => i.farmId === f.id && i.status === 'open').length;
     const st = farmStatus(f);
-    return `<tr><td class="num"><a href="#/farm/${f.id}">${esc(f.id)}</a></td><td>${esc(f.name || '')}<div class="small muted">${esc(f.region)}</div></td><td>${esc(team(f.teamId).name)}</td>
+    return `<tr style="${f.status === 'cancelled' ? 'opacity:.55' : ''}"><td class="num"><a href="#/farm/${f.id}">${esc(f.id)}</a>${f.status === 'cancelled' ? `<div><span class="tag warn">${esc(t('cancelled'))}</span></div>` : ''}${f.drawingPhotoId ? '' : ''}</td><td>${esc(f.name || '')}<div class="small muted">${esc(f.region)}</div></td><td>${esc(team(f.teamId).name)}</td>
       <td style="min-width:140px"><div class="row" style="flex-wrap:nowrap"><span style="width:42px">${p}%</span><span style="flex:1">${progressBar(p)}</span></div></td>
       <td><span class="tag ${st === 'completed' ? 'ok' : st === 'in_progress' ? 'amber' : ''}">${esc(t(st))}</span></td>
       <td class="small">${lr ? esc(timeLabel(lr.submittedAt)) : '—'}</td>
@@ -138,6 +119,9 @@ export function farmsListView() {
     html: `<div class="screen wide">${topbar()}<main class="content">
       <div class="row between">${mgrNav('farms')}<button class="btn xs" data-act="csv">${esc(t('export_csv'))}</button></div>
       <h1 class="h1">${esc(t('all_farms'))} · ${state.farms.length}</h1>
+      <div class="card flat row between"><div class="stack" style="gap:2px;flex:1;min-width:220px"><strong>${esc(t('upload_drawings'))}</strong>
+        <span class="small muted">${esc(t('upload_drawings_hint'))}</span></div>
+        <button class="btn ghost sm" data-act="drawings">${esc(t('upload_drawings'))}</button></div>
       <details class="card flat"><summary class="h3" style="cursor:pointer">${esc(t('add_farm'))}</summary>
         <form class="form" data-addfarm style="max-width:520px;margin-top:14px">
           <label>${esc(t('farm_code'))}<input class="input" name="id" id="nf-id" required pattern="[A-Za-z0-9_\\-]{2,12}" placeholder="HM25" autocomplete="off"></label>
@@ -157,6 +141,19 @@ export function farmsListView() {
       const inp = root.querySelector('[data-q]');
       inp.onchange = () => { location.hash = `#/manage/farms?q=${encodeURIComponent(inp.value)}`; };
       root.querySelector('[data-act=csv]').onclick = exportCSV;
+      root.querySelector('[data-act=drawings]').onclick = () => {
+        const inp = document.createElement('input');
+        inp.type = 'file'; inp.accept = 'image/*'; inp.multiple = true;
+        inp.onchange = async () => {
+          const files = [...inp.files];
+          if (!files.length) return;
+          try {
+            const res = await uploadDrawings(files, (i, n) => toast(t('uploading_n', { i, n })));
+            toast(t('drawings_uploaded', { n: res.done }) + (res.missing.length ? ' · ' + t('drawing_no_farm', { f: res.missing.join(', ') }) : ''));
+          } catch (err) { fail(err); }
+        };
+        inp.click();
+      };
       const form = root.querySelector('[data-addfarm]');
       form.onsubmit = async e => {
         e.preventDefault();

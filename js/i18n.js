@@ -293,6 +293,62 @@ Object.assign(S.ar, {
   stalled_note: 'بدأت ولم تنتهِ، ولم يُبلغ عن أي تقدم في هذه الفترة.',
 });
 
+// v0.5: the project's real stages, farm details, urgent problems.
+Object.assign(S.en, {
+  daily_report: 'Daily report', daily_report_hint: 'Choose the farm and report today\'s work',
+  st_concrete_floor: 'Concrete floor', st_room_structure: 'Room structure', st_excavation: 'Excavation',
+  st_room_irrigation: 'Room irrigation system', st_drip_sprinklers: 'Drip & sprinklers', st_main_line: 'Main line',
+  st_secondary_lines: 'Secondary lines', st_electricity: 'Electricity & generator', st_commissioning: 'Commissioning & handover',
+  urgent_btn: 'Report a problem now', urgent_hint: 'Urgent? Report it straight away, without the daily report.',
+  urgent_title: 'Report a problem now', urgent_farm: 'Which farm?', urgent_send: 'Send now', urgent_sent: 'Problem sent to management',
+  urgent_queued: 'Saved. It will be sent as soon as there is signal.', urgent_tag: 'Urgent', urgent_alerts: 'Urgent problem alerts',
+  urgent_alerts_why: 'Get a notification on this device when a worker reports an urgent problem.',
+  choose_farm_first: 'Choose the farm', change: 'Change',
+  farm_details_title: 'Project details', system: 'System', area: 'Area', crop: 'Crop', client_name: 'Client', project_no: 'Project no.',
+  stage_status: 'Stages', ready: 'Ready', started: 'In progress', since: 'since {d}', done_on: 'ready {d}',
+  cancelled: 'Cancelled', farm_status: 'Status', active: 'Active', boundary_note: 'Farm outline from the project map (KMZ).',
+  boq_search: 'Search item or code…', items_n: '{n} items', upload_drawings: 'Upload several drawings',
+  upload_drawings_hint: 'Choose image files named with the farm code, e.g. HM-01.jpg. Each goes to its farm.',
+  drawings_uploaded: '{n} drawings uploaded', drawing_no_farm: 'No farm found for {f}', uploading_n: 'Uploading {i} of {n}…',
+  download_drawings: 'Save all drawings on this phone', drawings_saved: '{n} drawings saved for offline use',
+});
+Object.assign(S.pt, {
+  daily_report: 'Relatório diário', daily_report_hint: 'Escolha a fazenda e reporte o trabalho de hoje',
+  st_concrete_floor: 'Piso de concreto', st_room_structure: 'Estrutura da sala', st_excavation: 'Escavação',
+  st_room_irrigation: 'Sala de sistema de irrigação', st_drip_sprinklers: 'Gota a gota e aspersores', st_main_line: 'Linha principal',
+  st_secondary_lines: 'Linhas secundárias', st_electricity: 'Eletricidade e gerador', st_commissioning: 'Comissionamento e entrega',
+  urgent_btn: 'Reportar problema agora', urgent_hint: 'Urgente? Reporte já, sem o relatório diário.',
+  urgent_title: 'Reportar problema agora', urgent_farm: 'Que fazenda?', urgent_send: 'Enviar agora', urgent_sent: 'Problema enviado à gestão',
+  urgent_queued: 'Guardado. Será enviado assim que houver rede.', urgent_tag: 'Urgente', urgent_alerts: 'Alertas de problemas urgentes',
+  urgent_alerts_why: 'Receba uma notificação neste aparelho quando um trabalhador reportar um problema urgente.',
+  choose_farm_first: 'Escolha a fazenda', change: 'Mudar',
+  farm_details_title: 'Dados do projeto', system: 'Sistema', area: 'Área', crop: 'Cultura', client_name: 'Cliente', project_no: 'N.º do projeto',
+  stage_status: 'Etapas', ready: 'Pronto', started: 'Em curso', since: 'desde {d}', done_on: 'pronto {d}',
+  cancelled: 'Cancelada', farm_status: 'Estado', active: 'Ativa', boundary_note: 'Contorno da fazenda do mapa do projeto (KMZ).',
+  boq_search: 'Procurar item ou código…', items_n: '{n} itens', upload_drawings: 'Carregar vários desenhos',
+  upload_drawings_hint: 'Escolha imagens com o código da fazenda no nome, ex. HM-01.jpg. Cada uma vai para a sua fazenda.',
+  drawings_uploaded: '{n} desenhos carregados', drawing_no_farm: 'Nenhuma fazenda para {f}', uploading_n: 'A carregar {i} de {n}…',
+  download_drawings: 'Guardar todos os desenhos no telefone', drawings_saved: '{n} desenhos guardados para uso sem rede',
+});
+Object.assign(S.ar, {
+  daily_report: 'التقرير اليومي', daily_report_hint: 'اختر المزرعة وأبلغ عن عمل اليوم',
+  st_concrete_floor: 'الأرضية الخرسانية', st_room_structure: 'هيكل الغرفة', st_excavation: 'الحفر',
+  st_room_irrigation: 'نظام ري الغرفة', st_drip_sprinklers: 'التنقيط والرشاشات', st_main_line: 'الخط الرئيسي',
+  st_secondary_lines: 'الخطوط الفرعية', st_electricity: 'الكهرباء والمولد', st_commissioning: 'التشغيل والتسليم',
+  urgent_btn: 'أبلغ عن مشكلة الآن', urgent_hint: 'عاجل؟ أبلغ فوراً دون التقرير اليومي.',
+  urgent_title: 'أبلغ عن مشكلة الآن', urgent_farm: 'أي مزرعة؟', urgent_send: 'أرسل الآن', urgent_sent: 'أُرسلت المشكلة إلى الإدارة',
+  urgent_queued: 'تم الحفظ. ستُرسل فور توفر الشبكة.', urgent_tag: 'عاجل', urgent_alerts: 'تنبيهات المشاكل العاجلة',
+  urgent_alerts_why: 'تلقَّ إشعاراً على هذا الجهاز عندما يبلغ عامل عن مشكلة عاجلة.',
+  choose_farm_first: 'اختر المزرعة', change: 'تغيير',
+  farm_details_title: 'بيانات المشروع', system: 'النظام', area: 'المساحة', crop: 'المحصول', client_name: 'العميل', project_no: 'رقم المشروع',
+  stage_status: 'المراحل', ready: 'جاهز', started: 'قيد التنفيذ', since: 'منذ {d}', done_on: 'جاهز {d}',
+  cancelled: 'ملغاة', farm_status: 'الحالة', active: 'نشطة', boundary_note: 'حدود المزرعة من خريطة المشروع (KMZ).',
+  boq_search: 'ابحث عن بند أو رمز…', items_n: '{n} بند', upload_drawings: 'رفع عدة مخططات',
+  upload_drawings_hint: 'اختر صوراً باسم رمز المزرعة، مثل HM-01.jpg. كل صورة تذهب إلى مزرعتها.',
+  drawings_uploaded: 'تم رفع {n} مخطط', drawing_no_farm: 'لا توجد مزرعة لـ {f}', uploading_n: 'جارٍ رفع {i} من {n}…',
+  download_drawings: 'حفظ كل المخططات على الهاتف', drawings_saved: 'تم حفظ {n} مخطط للاستخدام دون شبكة',
+});
+
 let current = 'en';
 export function setLang(l) {
   current = S[l] ? l : 'en';

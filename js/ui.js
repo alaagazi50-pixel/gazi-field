@@ -2,7 +2,6 @@
 import { t, getLang } from './i18n.js';
 import { hhmm, niceDate } from './data.js';
 import { photoURL, photoMeta, pendingCount } from './store.js';
-import { currentConn } from './connectivity.js';
 
 export const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 export const stageName = id => (id ? t('st_' + id) : t('general'));
@@ -25,13 +24,11 @@ export const ICONS = {
 };
 
 export function topbar({ back, title, right = '' } = {}) {
-  const conn = currentConn();
-  const connPill = conn === null ? '' : `<span class="pill ${conn ? '' : 'off'}"><span class="dot"></span>${conn ? t('online') : t('offline')}</span>`;
   return `<header class="topbar">
     ${back ? `<a class="iconbtn flip" href="${back}" aria-label="${esc(t('back'))}">${ICONS.back}</a>` : ''}
     <a class="brand" href="#/">GAZI <span>FIELD</span></a>
     ${title ? `<span class="muted small">· ${esc(title)}</span>` : ''}
-    <span class="grow"></span>${right}${pendingCount() ? `<a class="pill warn-pill" href="#/sync">${esc(t('waiting_sync', { n: pendingCount() }))}</a>` : ''}${connPill}
+    <span class="grow"></span>${right}${pendingCount() ? `<a class="pill warn-pill" href="#/sync">${esc(t('waiting_sync', { n: pendingCount() }))}</a>` : ''}
     <a class="iconbtn" href="#/settings" aria-label="${esc(t('settings'))}">${ICONS.menu}</a>
   </header>`;
 }
@@ -90,32 +87,6 @@ export function ago(ms, now = Date.now()) {
   if (min < 60) return t('ago_min', { n: min });
   if (min < 48 * 60) return t('ago_h', { n: Math.round(min / 60) });
   return t('ago_d', { n: Math.round(min / 1440) });
-}
-
-// Connectivity timeline bar for a summary produced by connectivity.js.
-export function connBlock(sum, { compact = false, headline = true } = {}) {
-  if (!sum) return `<div class="small muted">—</div>`;
-  const span = sum.to - sum.from;
-  let cursor = sum.from, parts = '';
-  for (const [a, b, s] of sum.segments) {
-    if (a > cursor) parts += `<i class="unk" style="width:${((a - cursor) / span) * 100}%"></i>`;
-    parts += `<i class="${s}" style="width:${((b - a) / span) * 100}%;min-width:3px"></i>`;
-    cursor = b;
-  }
-  const observed = sum.onlineMs + sum.offlineMs;
-  const share = observed ? Math.round((sum.onlineMs / observed) * 100) : null;
-  const headlineText = sum.lastOnline
-    ? t('last_internet', { t: hhmm(sum.lastOnline) })
-    : t('never_seen', { h: sum.hours });
-  return `<div class="conn">
-    <div class="row between small">${headline ? `<span class="${sum.lastOnline ? '' : 'strong'}" style="${sum.lastOnline ? '' : 'color:var(--red)'}">${esc(headlineText)}</span>` : '<span></span>'}
-      ${share != null ? `<span class="muted">${esc(t('online_share', { p: share }))}</span>` : ''}</div>
-    <div class="conn-bar" title="${esc(t('conn_last_hours', { h: sum.hours }))}">${parts}</div>
-    <div class="conn-axis">${[sum.from, sum.from + span / 2, sum.to].map(x => `<span>${sum.hours > 24 ? esc(niceDate(x, getLang())) + ' ' : ''}${hhmm(x)}</span>`).join('')}</div>
-    ${compact ? '' : `<div class="legend"><span><b style="background:var(--ok)"></b>${esc(t('had_internet'))}</span>
-      <span><b style="background:var(--orange)"></b>${esc(t('no_internet'))}</span>
-      <span><b style="background:#e6e9e7"></b>${esc(t('not_observed'))}</span></div>`}
-  </div>`;
 }
 
 export function getPosition(timeout = 12000) {

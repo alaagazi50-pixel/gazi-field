@@ -23,7 +23,6 @@ function workingDays(n) {           // Monday–Saturday, today included
 }
 
 function stats(reports, issues) {
-  const onlineShares = reports.map(r => r.connectivity).filter(c => c && c.onlineMs + c.offlineMs > 0).map(c => c.onlineMs / (c.onlineMs + c.offlineMs));
   const resolved = issues.filter(i => i.status === 'resolved' && i.resolvedAt);
   return {
     reports: reports.length,
@@ -36,7 +35,6 @@ function stats(reports, issues) {
     fixHours: avg(resolved.map(i => (i.resolvedAt - i.at) / 3600e3)),
     time: avg(reports.map(r => minutesOfDay(r.submittedAt))),
     gps: reports.length ? reports.filter(r => r.location?.verified).length / reports.length : null,
-    online: avg(onlineShares),
     last: reports.reduce((m, r) => Math.max(m, r.submittedAt), 0) || null,
   };
 }
@@ -59,7 +57,7 @@ export function analysisView() {
   issues.forEach(i => { cats[i.category] = (cats[i.category] || 0) + 1; });
   const catMax = Math.max(1, ...Object.values(cats));
   const moved = new Set(reps.filter(r => gain(r) > 0).map(r => r.farmId));
-  const stalled = state.farms.filter(f => { const p = farmProgress(f); return p > 0 && p < 100 && !moved.has(f.id); })
+  const stalled = state.farms.filter(f => { const p = farmProgress(f); return f.status !== 'cancelled' && p > 0 && p < 100 && !moved.has(f.id); })
     .sort((a, b) => farmProgress(a) - farmProgress(b));
   const bestGain = Math.max(1, ...teams.map(x => x.s.gain));
 
@@ -81,7 +79,7 @@ export function analysisView() {
       <div class="card stack"><div class="eyebrow">${esc(t('compare_teams'))}</div>
         <div class="tbl-wrap"><table class="tbl"><thead><tr>
           <th>${esc(t('team'))}</th><th>${esc(t('days_reported'))}</th><th>${esc(t('progress_added'))}</th><th>${esc(t('photos'))}</th>
-          <th>${esc(t('problems'))}</th><th>${esc(t('usual_time'))}</th><th>${esc(t('location_ok_share'))}</th><th>${esc(t('phone_online_share'))}</th></tr></thead>
+          <th>${esc(t('problems'))}</th><th>${esc(t('usual_time'))}</th><th>${esc(t('location_ok_share'))}</th></tr></thead>
         <tbody>${teams.map(({ tm, s, workers: w, rate }) => `<tr>
           <td><strong>${esc(tm.name)}</strong><div class="small muted">${w} ${esc(t('workers_n'))}</div></td>
           <td style="min-width:150px"><div class="small">${s.days} / ${wd} · ${pctTxt(rate)}</div>${progressBar(Math.round(rate * 100))}</td>
@@ -89,8 +87,7 @@ export function analysisView() {
           <td class="num">${s.photos}</td>
           <td>${s.problems}${s.open ? ` <span class="tag warn">${s.open} ${esc(t('open'))}</span>` : ''}${s.fixHours != null ? `<div class="small muted">${esc(t('fixed_in', { h: Math.round(s.fixHours) }))}</div>` : ''}</td>
           <td class="num">${s.time != null ? hm(s.time) : '—'}</td>
-          <td class="num">${pctTxt(s.gps)}</td>
-          <td class="num">${pctTxt(s.online)}</td></tr>`).join('')}</tbody></table></div></div>
+          <td class="num">${pctTxt(s.gps)}</td></tr>`).join('')}</tbody></table></div></div>
 
       <div class="card stack"><div class="eyebrow">${esc(t('compare_workers'))}</div>
         <div class="tbl-wrap"><table class="tbl"><thead><tr>

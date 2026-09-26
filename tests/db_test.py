@@ -110,8 +110,9 @@ check('storage: worker uploads to any farm folder',
 check('storage: client cannot upload', raises('client', "insert into storage.objects (bucket_id, name) values ('photos', 'HM16/c.jpg')") is not None)
 
 # --- submit_report (named arguments, several problems) ---
-items = lambda photo: json.dumps([{'stage': s, 'action': 'no_change'} for s in ['main_lines', 'drip', 'sprinklers', 'electrical', 'generator', 'testing']] +
-                                  [{'stage': 'room', 'action': 'updated', 'next': 80, 'photoId': photo}])
+STAGES = ['concrete_floor', 'room_structure', 'excavation', 'room_irrigation', 'drip_sprinklers', 'main_line', 'secondary_lines', 'electricity', 'commissioning']
+items = lambda photo: json.dumps([{'stage': s, 'action': 'no_change'} for s in STAGES if s != 'room_structure'] +
+                                  [{'stage': 'room_structure', 'action': 'updated', 'next': 80, 'photoId': photo}])
 call = """select submit_report(p_id => %s::uuid, p_farm => %s, p_date => current_date, p_items => %s::jsonb,
           p_location => '{"verified":true}'::jsonb, p_connectivity => '{"hours":12}'::jsonb, p_submitted_at => now(), p_issues => %s::jsonb)"""
 rid = str(uuid.uuid4())
@@ -127,7 +128,7 @@ two = json.dumps([{'stage': 'generator', 'category': 'material', 'note': 'Falta 
                   {'stage': None, 'category': 'access', 'note': 'Road flooded', 'lang': 'en', 'photoId': None}])
 r = as_('jamal', call, (rid, 'HM16', items(p1), two))
 check('worker submits report with two problems', r[0][0] is not None)
-check('farm progress applied', as_('mgr', "select stages->>'room' from farms where id='HM16'")[0][0] == '80')
+check('farm progress applied', as_('mgr', "select stages->>'room_structure' from farms where id='HM16'")[0][0] == '80')
 check('both problems saved and linked to the report', as_('mgr', "select count(*) from issues where report_id = %s", (rid,))[0][0] == 2)
 check('report points at its first problem', as_('mgr', "select issue_id is not null from reports where id = %s", (rid,))[0][0])
 check('retry with same id is idempotent', as_('jamal', call, (rid, 'HM16', items(p1), two))[0][0] is not None
@@ -143,7 +144,7 @@ p5 = str(uuid.uuid4()); as_('paulo', ins, (p5, 'BI12', f'BI12/{p5}.jpg', U['paul
 rid3 = str(uuid.uuid4())
 check('reports queued by the older app (single p_issue) still go through',
       raises('paulo', old, (rid3, items(p5))) is None and as_('mgr', "select count(*) from issues where report_id = %s", (rid3,))[0][0] == 1)
-room = [i for i in as_('mgr', "select items from reports where id = %s", (rid,))[0][0] if i['stage'] == 'room'][0]
+room = [i for i in as_('mgr', "select items from reports where id = %s", (rid,))[0][0] if i['stage'] == 'room_structure'][0]
 check('report stores server-side previous value', room['prev'] == 70 and room['next'] == 80)
 check('client cannot read reports', as_('client', "select count(*) from reports")[0][0] == 0)
 check('client cannot read issues', as_('client', "select count(*) from issues")[0][0] == 0)
@@ -163,21 +164,12 @@ check('supervisor follow-up', raises('sup', "insert into follow_ups (team_id, da
 check('worker cannot follow-up', raises('jamal', "insert into follow_ups (team_id, date) values ('C', current_date)") is not None)
 check('supervisor changes a team', as_('sup', "update profiles set team_id='B' where id=%s", (U['off'],)) == 1)
 check('manager adds a farm', raises('mgr', "insert into farms (id, region, team_id, lat, lng, name) values ('HM99', 'Huambo', 'A', -12.7, 15.7, 'Fazenda Nova')") is None)
-check('new farm starts at 0% on every stage', as_('mgr', "select stages->>'room', stages->>'testing' from farms where id='HM99'") == [('0', '0')])
+check('new farm starts at 0% on every stage', as_('mgr', "select stages->>'concrete_floor', stages->>'commissioning' from farms where id='HM99'") == [('0', '0')])
 check('worker cannot add a farm', raises('jamal', "insert into farms (id, region, team_id) values ('HM98', 'Huambo', 'A')") is not None)
 check('client cannot add a farm', raises('client', "insert into farms (id, region) values ('HM97', 'Huambo')") is not None)
 
-# --- phone connectivity ---
-ins_c = "insert into phone_connectivity (user_id, t, online, src) values (%s, now() - (%s || ' minutes')::interval, %s, 'app')"
-check('worker records own phone checks', raises('jamal', ins_c, (U['jamal'], '30', False)) is None and raises('jamal', ins_c, (U['jamal'], '5', True)) is None)
-check('worker cannot record checks for someone else', raises('jamal', ins_c, (U['paulo'], '4', True)) is not None)
-check('client cannot record for a worker', raises('client', ins_c, (U['jamal'], '3', True)) is not None)
-raises('paulo', ins_c, (U['paulo'], '10', True))
-rows = as_('mgr', "select user_id::text, jsonb_array_length(samples), last_online is not null from phone_status(12) order by 1")
-check('manager sees every worker phone summary', sorted(r[0] for r in rows) == sorted([U['jamal'], U['paulo']]) and all(r[2] for r in rows))
-check('supervisor sees phone summaries too', len(as_('sup', "select * from phone_status(12)")) == 2)
-check('worker sees only own phone history', [r[0] for r in as_('jamal', "select user_id::text from phone_status(12)")] == [U['jamal']])
-check('client sees no phone data', as_('client', "select count(*) from phone_status(12)")[0][0] == 0)
+# --- the phone internet check was removed ---
+check('phone check table and function are gone', ex("select to_regclass('public.phone_connectivity') is null and to_regprocedure('public.phone_status(int)') is null").fetchone()[0])
 
 # --- push reminders ---
 save = "select save_push_subscription('https://push.example/abc', 'key1', 'auth1', 'pt')"
@@ -187,6 +179,23 @@ check('same phone signed in by another worker moves to them', raises('paulo', sa
 check('stranger cannot subscribe', raises('stranger', save) is not None)
 check('workers cannot write the reminder log', raises('jamal', "insert into reminders_sent (user_id, date, kind) values (%s, current_date, 'x')", (U['jamal'],)) is not None)
 check('workers cannot read the reminder log', as_('jamal', "select count(*) from reminders_sent")[0][0] == 0)
+
+
+# --- urgent problems, reported without a daily report ---
+iid, iid2 = str(uuid.uuid4()), str(uuid.uuid4())
+rep = "select report_issue(p_id => %s::uuid, p_farm => %s, p_issue => %s::jsonb)"
+urgent = json.dumps({'category': 'equipment', 'stage': 'electricity', 'note': 'Generator on fire', 'lang': 'en'})
+check('worker reports an urgent problem without a report', raises('jamal', rep, (iid, 'ML04', urgent)) is None
+      and as_('mgr', "select urgent, report_id is null, category from issues where id = %s", (iid,)) == [(True, True, 'equipment')])
+check('sending it again does not duplicate it', raises('jamal', rep, (iid, 'ML04', urgent)) is None and as_('mgr', "select count(*) from issues where id = %s", (iid,))[0][0] == 1)
+check('client cannot report problems', raises('client', rep, (iid2, 'ML04', urgent)) is not None)
+check('unknown farm refused', raises('jamal', rep, (iid2, 'XX-99', urgent)) is not None)
+check("cannot attach someone else's photo", raises('paulo', rep, (iid2, 'ML04', json.dumps({'category': 'other', 'photoId': p1}))) is not None)
+check('cancelled farm refuses daily reports', raises('mgr', "update farms set status = 'cancelled' where id = 'ML06'") is None
+      and 'cancelled' in (raises('jamal', call, (str(uuid.uuid4()), 'ML06', items(p1), None)) or ''))
+check('farm status only active/cancelled', raises('mgr', "update farms set status = 'paused' where id = 'ML06'") is not None)
+check('farm details stored', raises('mgr', """update farms set details = '{"system":"Drip","area_ha":5}' where id = 'ML04'""") is None
+      and as_('jamal', "select details->>'system' from farms where id = 'ML04'") == [('Drip',)])
 
 print(f'\n{passed} passed, {failed} failed')
 conn.close()

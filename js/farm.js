@@ -1,11 +1,32 @@
 // Farm hub ("Everything about HM16 lives in HM16"), its sub-pages, and the daily report view.
 import { t, getLang, LANGS } from './i18n.js';
 import { STAGES, farmProgress } from './data.js';
-import { state, me, farm, user, team, issue, reportIssues, isMgr as isMgrUser, photoMeta, setPhotoApproved, resolveIssue, saveBoq, saveStages, setDrawing, setFarmTeam, saveFarmInfo } from './store.js';
-import { esc, stageName, ICONS, topbar, toast, fail, photoImg, hydratePhotos, pct, timeLabel, connBlock, progressBar, pickPhoto, parseGps, farmTitle } from './ui.js';
+import { state, me, farm, user, team, issue, reportIssues, isMgr as isMgrUser, photoMeta, setPhotoApproved, resolveIssue, saveBoq, saveStages, setDrawing, setFarmTeam, saveFarmInfo, setFarmStatus } from './store.js';
+import { esc, stageName, ICONS, topbar, toast, fail, photoImg, hydratePhotos, pct, timeLabel, progressBar, pickPhoto, parseGps, farmTitle } from './ui.js';
 
 const isMgr = () => isMgrUser(me());
 const homeHref = () => (isMgr() ? '#/manage' : '#/');
+
+// Project details from the BOM / drawings (system, area, crop, client, project number).
+function detailsCard(f) {
+  const d = f.details || {};
+  const rows = [['system', d.system], ['area', d.area_ha != null && d.area_ha !== '' ? `${d.area_ha} ha` : ''], ['crop', d.crop], ['client_name', d.client], ['project_no', d.project_no]]
+    .filter(([, v]) => v);
+  if (!rows.length) return '';
+  return `<div class="card flat stack"><div class="eyebrow">${esc(t('farm_details_title'))}</div>
+    <div class="kv">${rows.map(([k, v]) => `<span class="muted small">${esc(t(k))}</span><span>${esc(v)}</span>`).join('')}</div></div>`;
+}
+
+// Each stage: % and, when known, the date from the project tracking table.
+function stageList(f) {
+  const dates = f.details?.stage_dates || {};
+  return `<div class="stack" style="gap:6px"><div class="eyebrow">${esc(t('stage_status'))}</div><ul class="list">${STAGES.map(s => {
+    const v = f.stages[s.id] || 0, dt = dates[s.id];
+    const when = dt ? (dt.status === 'ready' ? t('done_on', { d: dt.date }) : t('since', { d: dt.date })) : '';
+    return `<li><span style="flex:1">${esc(stageName(s.id))}${when ? `<br><span class="small muted">${esc(when)}</span>` : ''}</span>
+      <span class="r"><span class="tag ${v >= 100 ? 'ok' : v > 0 ? 'amber' : ''}">${v >= 100 ? esc(t('ready')) : v > 0 ? `${v}%` : esc(t('not_started'))}</span></span></li>`;
+  }).join('')}</ul></div>`;
+}
 
 export function farmHubView({ farmId }) {
   const f = farm(farmId);
@@ -14,10 +35,10 @@ export function farmHubView({ farmId }) {
   return {
     html: `<div class="screen">${topbar({ back: isMgr() ? '#/manage/farms' : `#/work/${f.id}` })}<main class="content">
       <div class="h2">${esc(f.id)}${f.name ? `<br><span style="font-size:20px">${esc(f.name)}</span>` : ''}</div>
-      <div class="small upper muted">${esc(f.region)}</div>
-      <div class="strong upper">${farmProgress(f)}% ${esc(t('in_progress'))} · ${esc(team(f.teamId).name)}</div>
+      <div class="row small upper muted"><span>${esc(f.region)}${f.teamId ? ' · ' + esc(team(f.teamId).name) : ''}</span>
+        ${f.status === 'cancelled' ? `<span class="tag warn">${esc(t('cancelled'))}</span>` : ''}</div>
+      <div class="strong upper">${farmProgress(f)}% ${esc(t('in_progress'))}</div>
       ${progressBar(farmProgress(f))}
-      <div class="eyebrow" style="margin-top:8px">${esc(t('project_information'))}</div>
       <nav class="tiles two">
         ${item('location', 'map', t('location'))}
         ${item('drawing', 'drawing', t('project_drawing'))}
@@ -26,7 +47,8 @@ export function farmHubView({ farmId }) {
         ${item('history', 'history', t('history'))}
         ${item('issues', 'issues', t('issues'), openIssues)}
       </nav>
-      ${isMgr() ? stageEditor(f) : `<ul class="list">${STAGES.map(s => `<li>${esc(stageName(s.id))}<span class="r strong">${pct(f.stages[s.id] || 0)}</span></li>`).join('')}</ul>`}
+      ${detailsCard(f)}
+      ${isMgr() ? stageEditor(f) : stageList(f)}
     </main></div>`,
     mount(root) {
       const form = root.querySelector('[data-stages]');
@@ -44,6 +66,9 @@ export function farmHubView({ farmId }) {
       root.querySelector('[data-team]').onchange = async ev => {
         try { await setFarmTeam(f.id, ev.target.value); toast(t('saved')); } catch (err) { fail(err); }
       };
+      root.querySelector('[data-status]').onchange = async ev => {
+        try { await setFarmStatus(f.id, ev.target.value); toast(t('saved')); } catch (err) { fail(err); }
+      };
     },
   };
 }
@@ -52,6 +77,7 @@ export function farmHubView({ farmId }) {
 function stageEditor(f) {
   const opts = v => Array.from({ length: 21 }, (_, i) => i * 5).map(p => `<option value="${p}" ${p === (v || 0) ? 'selected' : ''}>${p}%</option>`).join('');
   const gps = f.gps.lat || f.gps.lng ? `${f.gps.lat}, ${f.gps.lng}` : '';
+  const dates = f.details?.stage_dates || {};
   return `<div class="card flat stack">
     <form data-info class="form"><span class="eyebrow">${esc(t('farm_details'))}</span>
       <label>${esc(t('farm_name'))}<input class="input" name="name" id="fi-name" value="${esc(f.name)}" placeholder="${esc(t('farm_name_hint'))}"></label>
@@ -61,8 +87,10 @@ function stageEditor(f) {
     <label class="form"><span class="eyebrow">${esc(t('team'))}</span>
       <select class="input" data-team><option value="">${esc(t('no_team'))}</option>
         ${state.teams.map(tm => `<option value="${esc(tm.id)}" ${tm.id === f.teamId ? 'selected' : ''}>${esc(tm.name)}</option>`).join('')}</select></label>
+    <label class="form"><span class="eyebrow">${esc(t('farm_status'))}</span>
+      <select class="input" data-status>${['active', 'cancelled'].map(v => `<option value="${v}" ${f.status === v ? 'selected' : ''}>${esc(t(v))}</option>`).join('')}</select></label>
     <form data-stages class="stack"><div class="eyebrow">${esc(t('edit_progress'))}</div>
-      <div class="stage-edit">${STAGES.map(s => `<label for="st-${s.id}">${esc(stageName(s.id))}</label>
+      <div class="stage-edit">${STAGES.map(s => `<label for="st-${s.id}">${esc(stageName(s.id))}${dates[s.id] ? `<br><span class="small muted">${esc(dates[s.id].status === 'ready' ? t('done_on', { d: dates[s.id].date }) : t('since', { d: dates[s.id].date }))}</span>` : ''}</label>
         <select class="input" id="st-${s.id}" name="${s.id}">${opts(f.stages[s.id])}</select>`).join('')}</div>
       <button class="btn sm" type="submit" style="align-self:flex-start">${esc(t('save'))}</button></form>
   </div>`;
@@ -86,6 +114,27 @@ export function farmSubView({ farmId, sub }) {
   return farmHubView({ farmId });
 }
 
+// The farm outline from the project map (KMZ) drawn to scale, so it works without signal.
+function outlineSvg(f) {
+  const b = f.details?.boundary;
+  if (!b || b.length < 3) return '';
+  const lat0 = b.reduce((n, [a]) => n + a, 0) / b.length;
+  const k = Math.cos(lat0 * Math.PI / 180);
+  const pts = b.map(([la, lo]) => [lo * k, -la]);
+  const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
+  const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
+  const W = 300, H = 200, pad = 14;
+  const sc = Math.min((W - 2 * pad) / (maxX - minX || 1), (H - 2 * pad) / (maxY - minY || 1));
+  const X = x => pad + (x - minX) * sc + ((W - 2 * pad) - (maxX - minX) * sc) / 2;
+  const Y = y => pad + (y - minY) * sc + ((H - 2 * pad) - (maxY - minY) * sc) / 2;
+  const d = pts.map(([x, y], i) => `${i ? 'L' : 'M'}${X(x).toFixed(1)} ${Y(y).toFixed(1)}`).join(' ') + ' Z';
+  const cx = X(f.gps.lng * k), cy = Y(-f.gps.lat);
+  return `<svg class="map-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(t('boundary_note'))}">
+    <path d="${d}" fill="rgba(19,128,111,.12)" stroke="#093b35" stroke-width="2"/>
+    <circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="7" fill="#093b35"/><circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="2.5" fill="#fff"/></svg>
+    <div class="small muted">${esc(t('boundary_note'))}</div>`;
+}
+
 function locationPage(f) {
   const { lat, lng } = f.gps;
   if (!lat && !lng) return page(f, t('location'), `<div class="empty">—</div>`);
@@ -93,13 +142,10 @@ function locationPage(f) {
   return page(f, t('location'), `
     <div class="card flat stack">
       <div class="eyebrow">${esc(t('gps_location'))}</div>
-      <svg class="map-svg" viewBox="0 0 300 170" aria-hidden="true">
-        <path d="M40 0 L140 170" stroke="#cdd8d2" stroke-width="16"/><path d="M200 0 L250 170" stroke="#cdd8d2" stroke-width="16"/>
-        <path d="M0 125 L300 35" stroke="#cdd8d2" stroke-width="16"/>
+      ${outlineSvg(f) || `<svg class="map-svg" viewBox="0 0 300 170" aria-hidden="true">
         <path d="M95 35 L200 25 L210 120 L110 130 Z" fill="none" stroke="#093b35" stroke-width="2.5"/>
-        <circle cx="152" cy="77" r="11" fill="#093b35"/><circle cx="152" cy="77" r="4" fill="#fff"/>
-      </svg>
-      <div>${esc(f.id)} · ${esc(f.region)}</div>
+        <circle cx="152" cy="77" r="11" fill="#093b35"/><circle cx="152" cy="77" r="4" fill="#fff"/></svg>`}
+      <div>${esc(farmTitle(f))} · ${esc(f.region)}</div>
       <div class="small muted" dir="ltr">${lat.toFixed(5)}, ${lng.toFixed(5)}</div>
       <a class="btn sm" href="https://www.google.com/maps/search/?api=1&query=${lat},${lng}" target="_blank" rel="noopener">${esc(t('open_maps'))}</a>
     </div>
@@ -129,19 +175,41 @@ function drawingPage(f) {
   });
 }
 
+// Bill of quantities, grouped by section (Pump & head control, Main network…) with the Netafim codes.
 function boqPage(f) {
   const edit = isMgr();
-  const rows = f.boq.map((r, i) => edit
-    ? `<tr><td><input class="input" data-i="${i}" data-k="item" value="${esc(r.item)}"></td><td style="width:80px"><input class="input" data-i="${i}" data-k="unit" value="${esc(r.unit)}"></td><td style="width:110px"><input class="input" data-i="${i}" data-k="qty" value="${esc(r.qty)}" inputmode="decimal"></td></tr>`
-    : `<tr><td>${esc(r.item)}</td><td>${esc(r.unit || '—')}</td><td class="num">${esc(r.qty === '' || r.qty == null ? '—' : Number(r.qty).toLocaleString())}</td></tr>`).join('');
+  const qty = r => (r.qty === '' || r.qty == null ? '—' : Number(r.qty).toLocaleString());
+  let body;
+  if (edit) {
+    const rows = f.boq.map((r, i) => `<tr data-row="${esc(`${r.item} ${r.code || ''} ${r.section || ''}`.toLowerCase())}">
+      <td class="small muted">${esc(r.section || '')}<br>${esc(r.code || '')}</td>
+      <td><input class="input" data-i="${i}" data-k="item" value="${esc(r.item)}"></td><td style="width:80px"><input class="input" data-i="${i}" data-k="unit" value="${esc(r.unit)}"></td>
+      <td style="width:110px"><input class="input" data-i="${i}" data-k="qty" value="${esc(r.qty)}" inputmode="decimal"></td></tr>`).join('');
+    body = `<div class="tbl-wrap"><table class="tbl"><thead><tr><th></th><th>${esc(t('item'))}</th><th>${esc(t('unit'))}</th><th>${esc(t('qty'))}</th></tr></thead><tbody>${rows}</tbody></table></div>
+      <div class="row"><button class="btn ghost sm" data-act="add">${esc(t('add_row'))}</button><button class="btn sm" data-act="save">${esc(t('save'))}</button></div>`;
+  } else {
+    const groups = {};
+    f.boq.forEach(r => { (groups[r.section || ''] ||= []).push(r); });
+    body = Object.entries(groups).map(([sec, rows]) => `<details class="card flat" ${Object.keys(groups).length === 1 ? 'open' : ''} data-group>
+      <summary class="row between" style="cursor:pointer"><strong>${esc(sec || t('bill_of_quantities'))}</strong><span class="small muted">${esc(t('items_n', { n: rows.length }))}</span></summary>
+      <div class="tbl-wrap" style="margin-top:10px"><table class="tbl"><tbody>${rows.map(r => `<tr data-row="${esc(`${r.item} ${r.code || ''}`.toLowerCase())}">
+        <td>${esc(r.item)}${r.code ? `<div class="small muted" dir="ltr">${esc(r.code)}</div>` : ''}</td><td class="num">${qty(r)}</td><td class="small">${esc(r.unit || '')}</td></tr>`).join('')}</tbody></table></div>
+    </details>`).join('');
+  }
   return page(f, t('bill_of_quantities'), `
-    <div class="tbl-wrap"><table class="tbl"><thead><tr><th>${esc(t('item'))}</th><th>${esc(t('unit'))}</th><th>${esc(t('qty'))}</th></tr></thead><tbody>${rows}</tbody></table></div>
-    <div class="small muted">${esc(t('boq_note'))}</div>
-    ${edit ? `<div class="row"><button class="btn ghost sm" data-act="add">${esc(t('add_row'))}</button><button class="btn sm" data-act="save">${esc(t('save'))}</button></div>` : ''}`,
+    ${f.boq.length > 12 ? `<input class="input" id="boq-search" data-boqsearch placeholder="${esc(t('boq_search'))}" autocomplete="off">` : ''}
+    ${f.boq.length || edit ? body : `<div class="empty">—</div>`}
+    <div class="small muted">${esc(t('boq_note'))} · ${esc(t('items_n', { n: f.boq.length }))}</div>`,
   root => {
+    const search = root.querySelector('[data-boqsearch]');
+    if (search) search.oninput = () => {
+      const q = search.value.trim().toLowerCase();
+      root.querySelectorAll('[data-row]').forEach(tr => { tr.hidden = !!q && !tr.dataset.row.includes(q); });
+      root.querySelectorAll('[data-group]').forEach(g => { if (q) g.open = true; });
+    };
     root.querySelectorAll('input[data-i]').forEach(inp => inp.oninput = () => { f.boq[+inp.dataset.i][inp.dataset.k] = inp.value; });
     const add = root.querySelector('[data-act=add]');
-    if (add) add.onclick = () => { f.boq.push({ item: '', unit: '', qty: '' }); window.dispatchEvent(new Event('rerender')); };
+    if (add) add.onclick = () => { f.boq.push({ section: '', code: '', item: '', unit: '', qty: '' }); window.dispatchEvent(new Event('rerender')); };
     const sv = root.querySelector('[data-act=save]');
     if (sv) sv.onclick = async () => {
       try { await saveBoq(f.id, f.boq.filter(r => String(r.item).trim())); toast(t('saved')); } catch (err) { fail(err); }
@@ -192,7 +260,7 @@ export function issueCard(i, { manage = false } = {}) {
   const tr = i.note
     ? `<a class="small" target="_blank" rel="noopener" href="https://translate.google.com/?sl=auto&tl=${viewer}&op=translate&text=${encodeURIComponent(i.note)}">${esc(t('translate'))}</a>` : '';
   return `<div class="card flat stack">
-    <div class="row between"><span class="eyebrow">${esc(i.farmId)} · ${esc(stageName(i.stage))} / ${esc(t('cat_' + i.category))}</span>
+    <div class="row between"><span class="eyebrow">${i.urgent ? `<span class="tag warn">⚠ ${esc(t('urgent_tag'))}</span> ` : ''}${esc(i.farmId)} · ${esc(stageName(i.stage))} / ${esc(t('cat_' + i.category))}</span>
       <span class="tag ${i.status === 'open' ? 'warn' : 'ok'}">${esc(t(i.status))}</span></div>
     ${i.note ? `<p class="note-quote" dir="auto">“${esc(i.note)}”</p>` : ''}
     <div class="row small muted"><span>${esc(t('original', { l: LANGS[i.lang] || i.lang }))}</span>${tr}</div>
@@ -242,7 +310,6 @@ export function reportView({ reportId }) {
           <div style="${loc && !loc.verified ? 'color:var(--red)' : ''}">${esc(locLine)}</div></div></div>
         <div class="stack">
           ${issues.map(i => issueCard(i, { manage: mgr && !i.pending })).join('')}
-          <div class="card flat stack"><div class="eyebrow">${esc(t('connectivity'))} · ${esc(u?.name)}</div>${connBlock(r.connectivity)}</div>
         </div>
       </div>
       <div class="eyebrow">${esc(t('photos'))}</div>

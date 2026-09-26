@@ -6,7 +6,7 @@ import { esc, stageName, topbar, progressBar, hydratePhotos, photoImg, farmTitle
 import { mgrNav } from './manage.js';
 
 export function clientView() {
-  const farms = state.farms;
+  const farms = state.farms.filter(f => f.status !== 'cancelled');
   const avg = Math.round(farms.reduce((s, f) => s + farmProgress(f), 0) / farms.length);
   const done = farms.filter(f => farmStatus(f) === 'completed').length;
   const inProg = farms.filter(f => farmStatus(f) === 'in_progress').sort((a, b) => farmProgress(b) - farmProgress(a));
