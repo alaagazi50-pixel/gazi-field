@@ -53,6 +53,22 @@ This is what lets you create worker and client logins from inside the app.
    - **Client:** role *Client*. Give them the username and password.
 4. Under **Teams**, pick each team's farm for today. Open a farm page to correct its progress or move it to another team.
 
+## Updating to v0.4 (supervisor, any farm, several problems, reminders)
+Do these **in this order**. The new app needs the database update first.
+
+1. **Database:** open Supabase → **SQL Editor → + New query**, paste `supabase/migrations/003_supervisor_anyfarm_issues_push.sql`, and click **Run**.
+2. **Account function** (so supervisors can create accounts): open **Edge Functions → super-handler → Code**, replace everything with `supabase/functions/admin-users/index.ts`, and click **Deploy**.
+3. **Publish the app:** in GitHub Desktop, commit `v0.4` and click **Push origin**.
+
+**Push reminders** (optional; the app works without them):
+
+4. **Reminder function:** open **Edge Functions → Deploy a new function → Via Editor**, name it `reminders`, paste `supabase/functions/reminders/index.ts`, and click **Deploy**. Then open the function's **Settings**, turn **Verify JWT OFF**, and click **Save**. The function checks who is calling by itself.
+5. **Secrets:** open **Edge Functions → Secrets**, and add each line from `.secrets/push-keys.txt` (name on the left, value on the right). This file is on your computer only and is never pushed.
+6. **Schedule:** open **SQL Editor → + New query**, paste `.secrets/schedule-reminders.sql`, and click **Run**. Reminders then go out at 16:00 and 18:00 (Angola time), Monday to Saturday, to workers whose report hasn't arrived.
+7. **On each worker's phone:** open the app and tap **Turn on** on the "Daily report reminders" card. On iPhone, the app must be installed to the home screen first.
+
+If the reminder function was deployed under another name (for example `quick-task`), put that name in `js/config.js` → `REMINDER_FUNCTION`, and in the two URLs in `.secrets/schedule-reminders.sql`.
+
 ## Publishing a new version
 Do this every time the app changes, for example after Claude has made changes on your computer.
 

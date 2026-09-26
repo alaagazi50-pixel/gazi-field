@@ -7,7 +7,7 @@ import { mgrNav } from './manage.js';
 let editing = null;   // profile id whose edit panel is open
 let created = null;   // { username, password } shown once after creating an account
 
-const ROLES = ['field', 'manager', 'client'];
+const ROLES = ['field', 'supervisor', 'manager', 'client'];
 const dbRole = r => (r === 'field' ? 'worker' : r);
 const genPassword = () => {
   const words = ['farm', 'drip', 'pump', 'field', 'green', 'water', 'solar', 'valve', 'river', 'maize'];

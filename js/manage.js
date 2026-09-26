@@ -1,13 +1,13 @@
 // Management: "sees the day in seconds" dashboard and the farm list.
 import { t, getLang } from './i18n.js';
 import { STAGES, dateKey, hhmm, niceDate, farmProgress, farmStatus } from './data.js';
-import { state, user, team, teamFarm, markFollowUp, refresh, addFarm } from './store.js';
-import { esc, stageName, topbar, timeLabel, connBlock, progressBar, fail, ago, toast, parseGps } from './ui.js';
+import { state, me, user, team, teamFarm, farm, reportIssues, markFollowUp, remindTeam, refresh, addFarm } from './store.js';
+import { esc, stageName, topbar, timeLabel, connBlock, progressBar, fail, ago, toast, parseGps, farmTitle } from './ui.js';
 import { summarize } from './connectivity.js';
 
 export function mgrNav(active) {
   const a = (k, href, label) => `<a class="${active === k ? 'on' : ''}" href="${href}">${esc(label)}</a>`;
-  return `<nav class="segmented">${a('dash', '#/manage', t('dashboard'))}${a('farms', '#/manage/farms', t('farms'))}${a('people', '#/manage/people', t('people'))}${a('client', '#/client', t('client_portal'))}</nav>`;
+  return `<nav class="segmented">${a('dash', '#/manage', t('dashboard'))}${me()?.role === 'supervisor' ? a('analysis', '#/manage/analysis', t('analysis')) : ''}${a('farms', '#/manage/farms', t('farms'))}${a('people', '#/manage/people', t('people'))}${a('client', '#/client', t('client_portal'))}</nav>`;
 }
 
 let phoneHours = 12;
@@ -43,18 +43,18 @@ export function dashboardView() {
   const openIssues = state.issues.filter(i => i.status === 'open').sort((a, b) => b.at - a.at);
   const farmsUpdated = new Set(todays.map(r => r.farmId)).size;
 
-  const issueReport = i => state.reports.find(r => r.issueId === i.id);
+  const issueReport = i => state.reports.find(r => r.id === i.reportId || r.issueId === i.id);
   const attention = [
     ...openIssues.map(i => {
       const r = issueReport(i);
-      return `<tr><td class="num">${esc(i.farmId)}</td><td>${esc(stageName(i.stage))} / ${esc(t('cat_' + i.category))}</td>
+      return `<tr><td class="num">${esc(farmTitle(farm(i.farmId) || { id: i.farmId }))}</td><td>${esc(stageName(i.stage))} / ${esc(t('cat_' + i.category))}</td>
         <td>${esc(t('reported_by', { n: user(i.reportedBy)?.name || '—', t: hhmm(i.at) }))}</td>
         <td><a class="btn xs" href="${r ? `#/report/${r.id}` : `#/farm/${i.farmId}/issues`}">${esc(t('review'))}</a></td></tr>`;
     }),
-    ...missing.filter(tm => teamFarm(tm.id)).map(tm => {
-      const f = teamFarm(tm.id);
+    ...missing.map(tm => {
+      const f = tm.todayFarm && farm(tm.todayFarm);
       const fu = state.followUps[`${tm.id}|${today}`];
-      return `<tr><td class="num">${esc(f.id)}</td><td>${esc(t('daily_report_missing'))}</td>
+      return `<tr><td class="num">${esc(f ? farmTitle(f) : tm.name)}</td><td>${esc(t('daily_report_missing'))}</td>
         <td>${esc(tm.name)} · ${esc(fu ? t('followed_up', { t: hhmm(fu) }) : t('awaiting_report'))}</td>
         <td><button class="btn xs" data-follow="${tm.id}" ${fu ? 'disabled' : ''}>${esc(t('follow_up'))}</button></td></tr>`;
     }),
@@ -62,8 +62,9 @@ export function dashboardView() {
 
   const reported = todays.map(r => {
     const changes = r.items.filter(i => i.action === 'updated').map(i => `${stageName(i.stage)} ${i.prev} → ${i.next}%`).join(' · ');
-    return `<tr><td class="num">${esc(r.farmId)}</td><td>${esc(changes || t('no_changes'))}${r.issueId ? ` <span class="tag warn">${esc(t('issues'))}</span>` : ''}</td>
-      <td>${esc(team(r.teamId).name)} / ${esc(user(r.userId)?.name)} · ${hhmm(r.submittedAt)}
+    const n = reportIssues(r).length;
+    return `<tr><td class="num">${esc(farmTitle(farm(r.farmId) || { id: r.farmId }))}</td><td>${esc(changes || t('no_changes'))}${n ? ` <span class="tag warn">${esc(t('issues'))} · ${n}</span>` : ''}</td>
+      <td>${r.teamId ? esc(team(r.teamId).name) + ' / ' : ''}${esc(user(r.userId)?.name)} · ${hhmm(r.submittedAt)}
         ${r.location && !r.location.verified ? `<span class="tag warn">GPS</span>` : ''}</td>
       <td><a class="btn xs" href="#/report/${r.id}">${esc(t('review'))}</a></td></tr>`;
   }).join('');
@@ -106,7 +107,12 @@ export function dashboardView() {
     </main></div>`,
     mount(root) {
       root.querySelectorAll('[data-follow]').forEach(b => b.onclick = async () => {
-        try { await markFollowUp(b.dataset.follow, today); } catch (err) { fail(err); }
+        try {
+          await markFollowUp(b.dataset.follow, today);
+          // Also push a reminder to that team's phones (only if reminders are set up in Supabase).
+          const res = await remindTeam(b.dataset.follow).catch(() => null);
+          toast(res ? t('reminder_sent', { n: res.people || 0 }) : t('followed_up', { t: hhmm(Date.now()) }));
+        } catch (err) { fail(err); }
       });
       root.querySelector('[data-act=refresh]').onclick = () => refresh();
       root.querySelectorAll('[data-hours]').forEach(a => a.onclick = () => { phoneHours = +a.dataset.hours; window.dispatchEvent(new Event('rerender')); });
@@ -116,13 +122,13 @@ export function dashboardView() {
 
 export function farmsListView() {
   const q = (new URLSearchParams(location.hash.split('?')[1] || '').get('q') || '').toLowerCase();
-  const farms = state.farms.filter(f => !q || f.id.toLowerCase().includes(q) || f.region.toLowerCase().includes(q));
+  const farms = state.farms.filter(f => !q || [f.id, f.name, f.region].some(x => (x || '').toLowerCase().includes(q)));
   const lastRep = f => state.reports.filter(r => r.farmId === f.id).sort((a, b) => b.submittedAt - a.submittedAt)[0];
   const rows = farms.map(f => {
     const p = farmProgress(f), lr = lastRep(f);
     const open = state.issues.filter(i => i.farmId === f.id && i.status === 'open').length;
     const st = farmStatus(f);
-    return `<tr><td class="num"><a href="#/farm/${f.id}">${esc(f.id)}</a></td><td>${esc(f.region)}</td><td>${esc(team(f.teamId).name)}</td>
+    return `<tr><td class="num"><a href="#/farm/${f.id}">${esc(f.id)}</a></td><td>${esc(f.name || '')}<div class="small muted">${esc(f.region)}</div></td><td>${esc(team(f.teamId).name)}</td>
       <td style="min-width:140px"><div class="row" style="flex-wrap:nowrap"><span style="width:42px">${p}%</span><span style="flex:1">${progressBar(p)}</span></div></td>
       <td><span class="tag ${st === 'completed' ? 'ok' : st === 'in_progress' ? 'amber' : ''}">${esc(t(st))}</span></td>
       <td class="small">${lr ? esc(timeLabel(lr.submittedAt)) : '—'}</td>
@@ -134,7 +140,8 @@ export function farmsListView() {
       <h1 class="h1">${esc(t('all_farms'))} · ${state.farms.length}</h1>
       <details class="card flat"><summary class="h3" style="cursor:pointer">${esc(t('add_farm'))}</summary>
         <form class="form" data-addfarm style="max-width:520px;margin-top:14px">
-          <label>${esc(t('farm_code'))}<input class="input" name="id" id="nf-id" required pattern="[A-Za-z0-9_\-]{2,12}" placeholder="HM25" autocomplete="off"></label>
+          <label>${esc(t('farm_code'))}<input class="input" name="id" id="nf-id" required pattern="[A-Za-z0-9_\\-]{2,12}" placeholder="HM25" autocomplete="off"></label>
+          <label>${esc(t('farm_name'))}<input class="input" name="name" id="nf-name" placeholder="${esc(t('farm_name_hint'))}" autocomplete="off"></label>
           <label>${esc(t('region'))}<input class="input" name="region" id="nf-region" required placeholder="Huambo" list="nf-regions">
             <datalist id="nf-regions">${[...new Set(state.farms.map(f => f.region))].map(r => `<option value="${esc(r)}">`).join('')}</datalist></label>
           <label>${esc(t('team'))}<select class="input" name="team" id="nf-team"><option value="">${esc(t('no_team'))}</option>
@@ -159,7 +166,7 @@ export function farmsListView() {
           const v = Object.fromEntries(new FormData(form));
           const gps = parseGps(v.gps);
           const id = v.id.trim().toUpperCase();
-          await addFarm({ id, region: v.region.trim(), teamId: v.team, lat: gps?.lat, lng: gps?.lng });
+          await addFarm({ id, name: v.name.trim(), region: v.region.trim(), teamId: v.team, lat: gps?.lat, lng: gps?.lng });
           toast(t('farm_added', { id }));
           location.hash = `#/farm/${id}`;
         } catch (err) { fail(err); } finally { btn.disabled = false; }

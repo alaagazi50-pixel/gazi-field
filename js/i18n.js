@@ -234,6 +234,65 @@ Object.assign(S.ar, {
   farm_details: 'بيانات المزرعة',
 });
 
+// v0.4: supervisor & analysis, farm chooser, several problems, reminders.
+Object.assign(S.en, {
+  role_supervisor: 'Supervisor', in_progress_short: 'Started', sent_today: 'Sent today', sent_by: 'Sent by {n}',
+  which_farm: 'Which farm are you at today?', near_me: 'Near me', near_on: 'Show all', planned_for_team: 'Planned for your team today',
+  recent_farms: 'Your recent farms', nearest_first: 'Nearest first',
+  farm_info: 'Farm information', farm_info_hint: 'Location, drawing, BOQ, photos, history and problems. Works without signal.',
+  another_problem: 'Add another problem', add_problem: 'Add this problem', remove: 'Remove', edit_problems: 'Edit problems',
+  farm_name: 'Farm name', farm_name_hint: 'e.g. Fazenda Esperança',
+  push_title: 'Daily report reminders', push_why: 'Get a notification if today\'s report hasn\'t been sent.', push_enable: 'Turn on',
+  push_on: 'Reminders are on', push_blocked: 'Notifications are blocked for this app. Allow them in the phone settings to get reminders.',
+  push_unsupported: 'This phone or browser can\'t receive notifications. On iPhone, install the app to the home screen first.',
+  push_denied: 'Notifications were not allowed.', reminder_sent: 'Reminder sent to {n} phone(s)',
+  analysis: 'Analysis', days_short: 'days', analysis_note: 'Working days in period (Mon–Sat): {d}. Reports still on phones are not counted.',
+  reports_sent: 'Reports', progress_points: 'Progress added (farm % points)', problems_reported: 'Problems reported',
+  location_ok_share: 'Location verified', compare_teams: 'Teams compared', compare_workers: 'Workers compared',
+  days_reported: 'Days reported', progress_added: 'Progress added', problems: 'Problems', usual_time: 'Usual time',
+  phone_online_share: 'Phone internet', workers_n: 'workers', fixed_in: 'resolved in ~{h} h on average', worker: 'Worker',
+  none_in_period: 'None in period', problems_by_type: 'Problems by type', stalled_farms: 'Farms without progress',
+  stalled_note: 'Started but not finished, and no progress reported in this period.',
+});
+Object.assign(S.pt, {
+  role_supervisor: 'Supervisor', in_progress_short: 'Iniciado', sent_today: 'Enviado hoje', sent_by: 'Enviado por {n}',
+  which_farm: 'Em que fazenda está hoje?', near_me: 'Perto de mim', near_on: 'Mostrar todas', planned_for_team: 'Planeada para a sua equipa hoje',
+  recent_farms: 'As suas fazendas recentes', nearest_first: 'Mais perto primeiro',
+  farm_info: 'Informação da fazenda', farm_info_hint: 'Localização, desenho, medições, fotos, histórico e problemas. Funciona sem rede.',
+  another_problem: 'Adicionar outro problema', add_problem: 'Adicionar este problema', remove: 'Remover', edit_problems: 'Editar problemas',
+  farm_name: 'Nome da fazenda', farm_name_hint: 'ex. Fazenda Esperança',
+  push_title: 'Lembretes do relatório diário', push_why: 'Receba uma notificação se o relatório de hoje não foi enviado.', push_enable: 'Ativar',
+  push_on: 'Lembretes ativados', push_blocked: 'As notificações estão bloqueadas para esta aplicação. Permita-as nas definições do telefone.',
+  push_unsupported: 'Este telefone ou navegador não recebe notificações. No iPhone, instale primeiro a aplicação no ecrã principal.',
+  push_denied: 'As notificações não foram permitidas.', reminder_sent: 'Lembrete enviado para {n} telefone(s)',
+  analysis: 'Análise', days_short: 'dias', analysis_note: 'Dias úteis no período (seg–sáb): {d}. Relatórios ainda nos telefones não contam.',
+  reports_sent: 'Relatórios', progress_points: 'Progresso adicionado (pontos %)', problems_reported: 'Problemas reportados',
+  location_ok_share: 'Localização verificada', compare_teams: 'Comparação de equipas', compare_workers: 'Comparação de trabalhadores',
+  days_reported: 'Dias reportados', progress_added: 'Progresso adicionado', problems: 'Problemas', usual_time: 'Hora habitual',
+  phone_online_share: 'Internet do telefone', workers_n: 'trabalhadores', fixed_in: 'resolvido em ~{h} h em média', worker: 'Trabalhador',
+  none_in_period: 'Nenhum no período', problems_by_type: 'Problemas por tipo', stalled_farms: 'Fazendas sem progresso',
+  stalled_note: 'Iniciadas mas não terminadas, sem progresso reportado neste período.',
+});
+Object.assign(S.ar, {
+  role_supervisor: 'مشرف', in_progress_short: 'بدأ', sent_today: 'أُرسل اليوم', sent_by: 'أرسله {n}',
+  which_farm: 'في أي مزرعة أنت اليوم؟', near_me: 'بالقرب مني', near_on: 'عرض الكل', planned_for_team: 'مخططة لفريقك اليوم',
+  recent_farms: 'مزارعك الأخيرة', nearest_first: 'الأقرب أولاً',
+  farm_info: 'معلومات المزرعة', farm_info_hint: 'الموقع والمخطط وجدول الكميات والصور والسجل والمشاكل. يعمل بدون شبكة.',
+  another_problem: 'إضافة مشكلة أخرى', add_problem: 'إضافة هذه المشكلة', remove: 'حذف', edit_problems: 'تعديل المشاكل',
+  farm_name: 'اسم المزرعة', farm_name_hint: 'مثل: مزرعة الأمل',
+  push_title: 'تذكير بالتقرير اليومي', push_why: 'تلقَّ إشعاراً إذا لم يُرسل تقرير اليوم.', push_enable: 'تفعيل',
+  push_on: 'التذكيرات مفعّلة', push_blocked: 'الإشعارات محظورة لهذا التطبيق. اسمح بها من إعدادات الهاتف.',
+  push_unsupported: 'هذا الهاتف أو المتصفح لا يستقبل الإشعارات. على الآيفون، ثبّت التطبيق على الشاشة الرئيسية أولاً.',
+  push_denied: 'لم يُسمح بالإشعارات.', reminder_sent: 'تم إرسال تذكير إلى {n} هاتف',
+  analysis: 'التحليل', days_short: 'يوم', analysis_note: 'أيام العمل في الفترة (الاثنين–السبت): {d}. التقارير التي لا تزال على الهواتف غير محسوبة.',
+  reports_sent: 'التقارير', progress_points: 'التقدم المضاف (نقاط %)', problems_reported: 'المشاكل المبلغ عنها',
+  location_ok_share: 'تم التحقق من الموقع', compare_teams: 'مقارنة الفرق', compare_workers: 'مقارنة العمال',
+  days_reported: 'أيام الإبلاغ', progress_added: 'التقدم المضاف', problems: 'المشاكل', usual_time: 'الوقت المعتاد',
+  phone_online_share: 'إنترنت الهاتف', workers_n: 'عمال', fixed_in: 'تُحل خلال ~{h} ساعة في المتوسط', worker: 'العامل',
+  none_in_period: 'لا شيء في الفترة', problems_by_type: 'المشاكل حسب النوع', stalled_farms: 'مزارع بدون تقدم',
+  stalled_note: 'بدأت ولم تنتهِ، ولم يُبلغ عن أي تقدم في هذه الفترة.',
+});
+
 let current = 'en';
 export function setLang(l) {
   current = S[l] ? l : 'en';

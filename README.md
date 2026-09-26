@@ -1,4 +1,4 @@
-# GAZI FIELD — v0.2.0
+# GAZI FIELD — v0.4.0
 
 One simple daily report. The whole project updated.
 
@@ -6,13 +6,14 @@ An installable, offline-first web app (PWA) for field teams, with Supabase as th
 
 **First time? Follow [SETUP.md](SETUP.md)** to connect the server and create your manager account.
 
-## Three kinds of account
+## Accounts
 
 | Role | What they get |
 |---|---|
-| **Field worker** | Signs in with a username. Sees their team's farm and does the daily report: one stage, one question, and a photo for any progress change. Also reports blocking issues. Works without signal: reports wait on the phone and upload by themselves. |
-| **Management** | Dashboard (teams reported, farms updated, needs attention), report review, photo approval for the client, issue resolution, farm list and CSV export. The **People** page creates accounts, sets role, team and language, resets passwords and switches people off. Picks each team's farm for the day and can correct progress. |
-| **Client** | Project progress, completed and in-progress farms, and approved photos only. No names, notes or issues. |
+| **Field worker** | Signs in with a username. Picks the farm they are at today: any farm, with search, recent farms, the team's planned farm as a suggestion, and **Near me** by GPS. Does the daily report: one stage, one question, and a photo for every progress change. Can add **several problems** per report. **Farm information** (map, drawing, BOQ, photos, history, problems) is under one button and works without signal. Reports made offline **upload by themselves** when signal returns, and on Android even when the app is closed. Optional push **reminders** if the day's report hasn't been sent. |
+| **Manager** | Dashboard, report review, photo approval, problem resolution, farms (add, names, GPS, BOQ, drawings, progress correction), People (accounts and teams). **Follow up** also pushes a reminder to that team's phones. |
+| **Supervisor** | Everything a manager has, plus **Analysis**: teams and workers compared over 7, 30 or 90 days (days reported, progress added, photos, problems and resolution time, usual report time, location verified, phone internet), problems by type, and farms without progress. |
+| **Client** | Project progress and approved photos only. No names, notes or problems. |
 
 Access is enforced by row-level security in the database (`supabase/schema.sql`), not only hidden in the screens. Progress from the field can only change through `submit_report()`, which checks the worker's team and requires a photo for every change.
 
@@ -46,7 +47,10 @@ js/connectivity.js  internet tests and timeline  js/i18n.js     English / Portug
 js/vendor/supabase.js   Supabase client library (v2.117.1, bundled so it works offline)
 supabase/schema.sql     tables, access rules, submit_report()
 supabase/seed.sql       starter teams and 60 farms
-supabase/functions/admin-users/index.ts   creates accounts and resets passwords (management only)
+supabase/functions/admin-users/index.ts   creates accounts and resets passwords (deployed as super-handler)
+supabase/functions/reminders/index.ts      push reminders (daily schedule + Follow up button)
+supabase/migrations/     database updates, run in order in the SQL Editor
+js/analysis.js          supervisor analysis
 tests/db_test.py        who-can-see-what checks (run by GitHub Actions)
 render.yaml             optional Render static-site hosting
 ```

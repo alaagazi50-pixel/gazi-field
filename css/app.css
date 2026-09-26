@@ -228,3 +228,4 @@ textarea.input { min-height: 90px; resize: vertical; }
 .login .input { background: rgba(255,255,255,.95); }
 .login .err { background: #fde3d8; color: #7a2c12; padding: 10px 12px; border-radius: 8px; font-size: 14px; }
 .stage-edit { display: grid; grid-template-columns: 1fr 110px; gap: 8px 12px; align-items: center; }
+.btn svg { width: 22px; height: 22px; flex: none; }

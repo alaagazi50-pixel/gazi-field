@@ -19,12 +19,12 @@ Deno.serve(async (req) => {
     const url = Deno.env.get('SUPABASE_URL')!;
     const admin = createClient(url, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
 
-    // Who is calling? Must be an active manager.
+    // Who is calling? Must be an active manager or supervisor.
     const jwt = (req.headers.get('Authorization') || '').replace('Bearer ', '');
     const { data: { user }, error: userErr } = await admin.auth.getUser(jwt);
     if (userErr || !user) return json({ error: 'Not signed in' }, 401);
     const { data: me } = await admin.from('profiles').select('role, active').eq('id', user.id).single();
-    if (!me || me.role !== 'manager' || !me.active) return json({ error: 'Only managers can manage accounts' }, 403);
+    if (!me || !['manager', 'supervisor'].includes(me.role) || !me.active) return json({ error: 'Only managers and supervisors can manage accounts' }, 403);
 
     const body = await req.json();
 
@@ -32,8 +32,7 @@ Deno.serve(async (req) => {
       const username = String(body.username || '').trim().toLowerCase();
       if (!/^[a-z0-9._-]{3,30}$/.test(username)) return json({ error: 'Username: 3–30 letters, numbers, dot, dash or underscore' }, 400);
       if (!body.password || String(body.password).length < 8) return json({ error: 'Password must be at least 8 characters' }, 400);
-      if (!['worker', 'manager', 'client'].includes(body.role)) return json({ error: 'Invalid role' }, 400);
-      if (body.role === 'worker' && !body.team_id) return json({ error: 'Workers need a team' }, 400);
+      if (!['worker', 'manager', 'supervisor', 'client'].includes(body.role)) return json({ error: 'Invalid role' }, 400);
 
       const email = body.email ? String(body.email).trim().toLowerCase() : `${username}@${USERNAME_DOMAIN}`;
       const { data: created, error } = await admin.auth.admin.createUser({

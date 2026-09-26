@@ -6,6 +6,8 @@ import { currentConn } from './connectivity.js';
 
 export const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 export const stageName = id => (id ? t('st_' + id) : t('general'));
+// 'HM16 · Fazenda Esperança', or just 'HM16' when the farm has no name yet.
+export const farmTitle = f => (f?.name ? `${f.id} · ${f.name}` : f?.id || '—');
 
 const P = 'fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"';
 export const ICONS = {
@@ -37,7 +39,7 @@ export function topbar({ back, title, right = '' } = {}) {
 // Show an error from a store action in the user's language.
 export function fail(e) {
   const key = e?.message;
-  toast(['needs_connection', 'wrong_login', 'no_access', 'farm_exists', 'bad_gps'].includes(key) ? t(key) : (key || 'Error'));
+  toast(['needs_connection', 'wrong_login', 'no_access', 'farm_exists', 'bad_gps', 'push_unsupported', 'push_denied'].includes(key) ? t(key) : (key || 'Error'));
 }
 
 // "-12.7765, 15.7391" → { lat, lng }; empty → null; anything else throws 'bad_gps'.

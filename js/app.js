@@ -1,17 +1,18 @@
 // Entry point: boot, hash router, sign-in and settings.
 import { t, setLang, getLang, LANGS } from './i18n.js';
 import { hhmm } from './data.js';
-import { state, configured, me, team, restoreSession, signIn, signOut, refresh, sync, save, pendingCount, uploadConn } from './store.js';
+import { state, configured, me, team, restoreSession, signIn, signOut, refresh, sync, save, pendingCount, uploadConn, reloadLocal } from './store.js';
 import { esc, topbar, toast } from './ui.js';
 import { storageLimited } from './db.js';
 import { startConnectivityMonitor, onConnChange, onSample } from './connectivity.js';
-import { homeView, pickFarmView, updateView, doneView } from './field.js';
+import { homeView, pickFarmView, workView, updateView, doneView } from './field.js';
 import { farmHubView, farmSubView, reportView } from './farm.js';
 import { dashboardView, farmsListView } from './manage.js';
 import { peopleView } from './people.js';
+import { analysisView } from './analysis.js';
 import { clientView, clientFarmView } from './client.js';
 
-export const APP_VERSION = '0.3.1';
+export const APP_VERSION = '0.4.0';
 
 // [path, view, roles allowed]. Roles: field (worker), manager, client.
 const ROUTES = [
@@ -20,14 +21,16 @@ const ROUTES = [
   ['/pick-farm', pickFarmView, ['field']],
   ['/update/:farmId', updateView, ['field']],
   ['/done/:reportId', doneView, ['field']],
-  ['/report/:reportId', reportView, ['field', 'manager']],
-  ['/farm/:farmId', farmHubView, ['field', 'manager']],
-  ['/farm/:farmId/:sub', farmSubView, ['field', 'manager']],
-  ['/manage', dashboardView, ['manager']],
-  ['/manage/farms', farmsListView, ['manager']],
-  ['/manage/people', peopleView, ['manager']],
-  ['/client', clientView, ['client', 'manager']],
-  ['/client/farm/:farmId', clientFarmView, ['client', 'manager']],
+  ['/work/:farmId', workView, ['field']],
+  ['/report/:reportId', reportView, ['field', 'manager', 'supervisor']],
+  ['/farm/:farmId', farmHubView, ['field', 'manager', 'supervisor']],
+  ['/farm/:farmId/:sub', farmSubView, ['field', 'manager', 'supervisor']],
+  ['/manage', dashboardView, ['manager', 'supervisor']],
+  ['/manage/analysis', analysisView, ['supervisor']],
+  ['/manage/farms', farmsListView, ['manager', 'supervisor']],
+  ['/manage/people', peopleView, ['manager', 'supervisor']],
+  ['/client', clientView, ['client', 'manager', 'supervisor']],
+  ['/client/farm/:farmId', clientFarmView, ['client', 'manager', 'supervisor']],
 ];
 
 function match(path) {
@@ -40,7 +43,7 @@ function match(path) {
   return null;
 }
 
-const homeFor = u => ({ field: '#/', manager: '#/manage', client: '#/client' }[u.role]);
+const homeFor = u => ({ field: '#/', manager: '#/manage', supervisor: '#/manage', client: '#/client' }[u.role] || '#/');
 
 let lastPath = null;
 async function render() {
@@ -169,6 +172,11 @@ function settingsView() {
   setLang(saved || (navigator.language || 'en').slice(0, 2));
   if ('serviceWorker' in navigator && location.protocol !== 'file:') {
     navigator.serviceWorker.register('sw.js').catch(err => console.warn('SW registration failed', err));
+    // The service worker asks the open app to upload, or tells it that it uploaded while the app was closed.
+    navigator.serviceWorker.addEventListener('message', e => {
+      if (e.data === 'gazi-sync') sync();
+      if (e.data === 'gazi-uploaded') reloadLocal();
+    });
   }
   window.addEventListener('hashchange', render);
   window.addEventListener('rerender', render);
@@ -182,6 +190,8 @@ function settingsView() {
 
   // Keep data fresh and the upload queue moving.
   onConnChange(online => { if (online) sync(); render(); });
+  // Upload the moment the phone says it is back online (the internet check may take a few seconds).
+  window.addEventListener('online', () => sync());
   onSample(online => { if (online && me()?.role === 'field') uploadConn(); });
   setInterval(() => { if (me() && document.visibilityState === 'visible') { sync(); refresh(); } }, 2 * 60e3);
   document.addEventListener('visibilitychange', () => { if (me() && document.visibilityState === 'visible') { sync(); refresh(); } });
