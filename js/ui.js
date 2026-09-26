@@ -73,9 +73,16 @@ export async function zoom(id) {
 export function progressBar(p) { return `<div class="progressbar"><i style="width:${p}%"></i></div>`; }
 export const pct = v => (v === 0 ? t('not_started') : `${v}%`);
 export const timeLabel = ms => `${niceDate(ms, getLang())} · ${hhmm(ms)}`;
+export function ago(ms, now = Date.now()) {
+  const min = Math.round((now - ms) / 60e3);
+  if (min < 2) return t('just_now');
+  if (min < 60) return t('ago_min', { n: min });
+  if (min < 48 * 60) return t('ago_h', { n: Math.round(min / 60) });
+  return t('ago_d', { n: Math.round(min / 1440) });
+}
 
 // Connectivity timeline bar for a summary produced by connectivity.js.
-export function connBlock(sum, { compact = false } = {}) {
+export function connBlock(sum, { compact = false, headline = true } = {}) {
   if (!sum) return `<div class="small muted">—</div>`;
   const span = sum.to - sum.from;
   let cursor = sum.from, parts = '';
@@ -86,14 +93,14 @@ export function connBlock(sum, { compact = false } = {}) {
   }
   const observed = sum.onlineMs + sum.offlineMs;
   const share = observed ? Math.round((sum.onlineMs / observed) * 100) : null;
-  const headline = sum.lastOnline
+  const headlineText = sum.lastOnline
     ? t('last_internet', { t: hhmm(sum.lastOnline) })
     : t('never_seen', { h: sum.hours });
   return `<div class="conn">
-    <div class="row between small"><span class="${sum.lastOnline ? '' : 'strong'}" style="${sum.lastOnline ? '' : 'color:var(--red)'}">${esc(headline)}</span>
+    <div class="row between small">${headline ? `<span class="${sum.lastOnline ? '' : 'strong'}" style="${sum.lastOnline ? '' : 'color:var(--red)'}">${esc(headlineText)}</span>` : '<span></span>'}
       ${share != null ? `<span class="muted">${esc(t('online_share', { p: share }))}</span>` : ''}</div>
     <div class="conn-bar" title="${esc(t('conn_last_hours', { h: sum.hours }))}">${parts}</div>
-    <div class="conn-axis"><span>${hhmm(sum.from)}</span><span>${hhmm(sum.from + span / 2)}</span><span>${hhmm(sum.to)}</span></div>
+    <div class="conn-axis">${[sum.from, sum.from + span / 2, sum.to].map(x => `<span>${sum.hours > 24 ? esc(niceDate(x, getLang())) + ' ' : ''}${hhmm(x)}</span>`).join('')}</div>
     ${compact ? '' : `<div class="legend"><span><b style="background:var(--ok)"></b>${esc(t('had_internet'))}</span>
       <span><b style="background:var(--orange)"></b>${esc(t('no_internet'))}</span>
       <span><b style="background:#e6e9e7"></b>${esc(t('not_observed'))}</span></div>`}

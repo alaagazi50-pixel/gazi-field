@@ -139,6 +139,20 @@ check('manager follow-up', raises('mgr', "insert into follow_ups (team_id, date)
 check('worker cannot follow-up', raises('jamal', "insert into follow_ups (team_id, date) values ('E', current_date)") is not None)
 check('manager changes role', as_('mgr', "update profiles set team_id='B' where id=%s", (U['off'],)) == 1)
 
+# --- phone connectivity ---
+ins_c = "insert into phone_connectivity (user_id, t, online, src) values (%s, now() - (%s || ' minutes')::interval, %s, 'app')"
+check('worker records own phone checks', raises('jamal', ins_c, (U['jamal'], '30', False)) is None and raises('jamal', ins_c, (U['jamal'], '5', True)) is None)
+check('worker cannot record checks for someone else', raises('jamal', ins_c, (U['paulo'], '4', True)) is not None)
+check('client cannot record for a worker', raises('client', ins_c, (U['jamal'], '3', True)) is not None)
+check('switched-off account cannot record', raises('off', ins_c, (U['off'], '3', True)) is not None)
+raises('paulo', ins_c, (U['paulo'], '10', True))
+rows = as_('mgr', "select user_id::text, jsonb_array_length(samples), last_online is not null from phone_status(12) order by 1")
+check('manager sees every worker phone summary', sorted(r[0] for r in rows) == sorted([U['jamal'], U['paulo']]) and all(r[2] for r in rows))
+check('summary keeps offline and online checks', [r for r in rows if r[0] == U['jamal']][0][1] == 2)
+check('worker sees only own phone history', [r[0] for r in as_('jamal', "select user_id::text from phone_status(12)")] == [U['jamal']])
+check('other worker cannot see Jamal', U['jamal'] not in [r[0] for r in as_('paulo', "select user_id::text from phone_status(12)")])
+check('client sees no phone data', as_('client', "select count(*) from phone_connectivity")[0][0] == 0 and as_('client', "select count(*) from phone_status(12)")[0][0] == 0)
+
 print(f'\n{passed} passed, {failed} failed')
 conn.close()
 sys.exit(1 if failed else 0)

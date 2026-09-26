@@ -1,17 +1,17 @@
 // Entry point: boot, hash router, sign-in and settings.
 import { t, setLang, getLang, LANGS } from './i18n.js';
 import { hhmm } from './data.js';
-import { state, configured, me, team, restoreSession, signIn, signOut, refresh, sync, save, pendingCount } from './store.js';
+import { state, configured, me, team, restoreSession, signIn, signOut, refresh, sync, save, pendingCount, uploadConn } from './store.js';
 import { esc, topbar, toast } from './ui.js';
 import { storageLimited } from './db.js';
-import { startConnectivityMonitor, onConnChange } from './connectivity.js';
+import { startConnectivityMonitor, onConnChange, onSample } from './connectivity.js';
 import { homeView, pickFarmView, updateView, doneView } from './field.js';
 import { farmHubView, farmSubView, reportView } from './farm.js';
 import { dashboardView, farmsListView } from './manage.js';
 import { peopleView } from './people.js';
 import { clientView, clientFarmView } from './client.js';
 
-export const APP_VERSION = '0.2.0';
+export const APP_VERSION = '0.3.0';
 
 // [path, view, roles allowed]. Roles: field (worker), manager, client.
 const ROUTES = [
@@ -182,6 +182,7 @@ function settingsView() {
 
   // Keep data fresh and the upload queue moving.
   onConnChange(online => { if (online) sync(); render(); });
+  onSample(online => { if (online && me()?.role === 'field') uploadConn(); });
   setInterval(() => { if (me() && document.visibilityState === 'visible') { sync(); refresh(); } }, 2 * 60e3);
   document.addEventListener('visibilitychange', () => { if (me() && document.visibilityState === 'visible') { sync(); refresh(); } });
 })().catch(err => {

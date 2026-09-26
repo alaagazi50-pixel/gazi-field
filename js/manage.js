@@ -2,11 +2,37 @@
 import { t, getLang } from './i18n.js';
 import { STAGES, dateKey, hhmm, niceDate, farmProgress, farmStatus } from './data.js';
 import { state, user, team, teamFarm, markFollowUp, refresh } from './store.js';
-import { esc, stageName, topbar, timeLabel, connBlock, progressBar, fail } from './ui.js';
+import { esc, stageName, topbar, timeLabel, connBlock, progressBar, fail, ago } from './ui.js';
+import { summarize } from './connectivity.js';
 
 export function mgrNav(active) {
   const a = (k, href, label) => `<a class="${active === k ? 'on' : ''}" href="${href}">${esc(label)}</a>`;
   return `<nav class="segmented">${a('dash', '#/manage', t('dashboard'))}${a('farms', '#/manage/farms', t('farms'))}${a('people', '#/manage/people', t('people'))}${a('client', '#/client', t('client_portal'))}</nav>`;
+}
+
+let phoneHours = 12;
+
+// Every field worker's phone: when it last had internet, and a timeline. Oldest contact first.
+function phonesSection() {
+  const now = Date.now();
+  const workers = state.users.filter(u => u.role === 'field' && u.active).map(u => {
+    const p = state.phones.find(x => x.userId === u.id);
+    return { u, p, sum: p ? summarize(p.samples, phoneHours, now) : null };
+  }).sort((a, b) => (a.p?.lastOnline ?? 0) - (b.p?.lastOnline ?? 0) || a.u.name.localeCompare(b.u.name));
+  const seg = [12, 24, 72].map(h => `<a href="javascript:void 0" data-hours="${h}" class="${h === phoneHours ? 'on' : ''}">${h} h</a>`).join('');
+  const card = ({ u, p, sum }) => {
+    const stale = !p?.lastOnline || now - p.lastOnline > 6 * 3600e3;
+    return `<div class="card flat stack">
+      <div class="row between"><strong>${esc(u.name)}</strong><span class="small muted">${esc(team(u.teamId).name)}</span></div>
+      ${p?.lastOnline
+        ? `<div class="small ${stale ? 'strong' : ''}" style="${stale ? 'color:var(--red)' : ''}">${esc(t('last_internet', { t: timeLabel(p.lastOnline) }))} · ${esc(ago(p.lastOnline, now))}</div>`
+        : `<div class="small strong" style="color:var(--red)">${esc(t('no_phone_data'))}</div>`}
+      ${sum ? connBlock(sum, { compact: true, headline: false }) : ''}
+    </div>`;
+  };
+  return `<div class="row between"><div class="eyebrow">${esc(t('phones_title'))}</div><nav class="segmented" data-phonehours>${seg}</nav></div>
+    <div class="small muted">${esc(t('phones_note'))}</div>
+    ${workers.length ? `<div class="grid c3">${workers.map(card).join('')}</div>` : `<div class="empty">—</div>`}`;
 }
 
 export function dashboardView() {
@@ -76,12 +102,14 @@ export function dashboardView() {
       </div>
       <div class="eyebrow">${esc(t('teams_status'))}</div>
       <div class="grid c3">${teamRows}</div>
+      ${phonesSection()}
     </main></div>`,
     mount(root) {
       root.querySelectorAll('[data-follow]').forEach(b => b.onclick = async () => {
         try { await markFollowUp(b.dataset.follow, today); } catch (err) { fail(err); }
       });
       root.querySelector('[data-act=refresh]').onclick = () => refresh();
+      root.querySelectorAll('[data-hours]').forEach(a => a.onclick = () => { phoneHours = +a.dataset.hours; window.dispatchEvent(new Event('rerender')); });
     },
   };
 }

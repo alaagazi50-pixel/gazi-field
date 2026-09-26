@@ -4,7 +4,7 @@
 // then refreshed from the server. Field reports are queued in an outbox and uploaded when the
 // phone has internet; management actions go straight to the server.
 import { SUPABASE_URL, SUPABASE_ANON_KEY, USERNAME_DOMAIN, ADMIN_FUNCTION } from './config.js';
-import { kvGet, kvSet, kvDel, putPhoto, getPhoto } from './db.js';
+import { kvGet, kvSet, kvDel, putPhoto, getPhoto, getConnSince } from './db.js';
 import { photoLabel } from './data.js';
 
 export const configured = !!(SUPABASE_URL && SUPABASE_ANON_KEY && window.supabase);
@@ -14,7 +14,7 @@ export const sb = configured
 
 const empty = () => ({
   me: null, project: { name: 'GAZI FIELD', country: '' }, teams: [], users: [], farms: [], reports: [], issues: [], photos: [], followUps: {},
-  drafts: {}, farmPick: {}, outbox: [], pendingPhotos: [], lastSync: null, syncError: null,
+  phones: [], drafts: {}, farmPick: {}, outbox: [], pendingPhotos: [], lastSync: null, syncError: null,
 });
 export let state = empty();
 
@@ -47,6 +47,7 @@ function applyServer(server) {
     teams: server.teams.map(mapTeam), users: server.profiles.map(mapProfile), farms: server.farms.map(mapFarm),
     reports: server.reports.map(mapReport), issues: server.issues.map(mapIssue), photos: server.photos.map(mapPhoto),
     followUps: Object.fromEntries(server.followUps.map(f => [`${f.team_id}|${f.date}`, ms(f.at)])),
+    phones: (server.phones || []).map(p => ({ userId: p.user_id, samples: p.samples.map(([t, online]) => ({ t, online })), lastOnline: ms(p.last_online), lastSeen: ms(p.last_seen) })),
     lastSync: server.at,
   });
   const me = state.users.find(u => u.id === state.me.id);
@@ -126,7 +127,7 @@ async function doRefresh() {
   const q = (p) => p.then(({ data, error }) => { if (error) throw error; return data; });
   const none = Promise.resolve([]);
   try {
-    const [project, teams, profiles, farms, photos, reports, issues, followUps] = await Promise.all([
+    const [project, teams, profiles, farms, photos, reports, issues, followUps, phones] = await Promise.all([
       q(sb.from('project').select('*').maybeSingle()),
       role === 'client' ? none : q(sb.from('teams').select('*').order('id')),
       q(sb.from('profiles').select('*').order('full_name')),
@@ -135,10 +136,12 @@ async function doRefresh() {
       role === 'client' ? none : q(sb.from('reports').select('*').gte('date', since).order('submitted_at')),
       role === 'client' ? none : q(sb.from('issues').select('*').order('at')),
       role === 'manager' ? q(sb.from('follow_ups').select('*').gte('date', since)) : none,
+      // Older databases may not have phone_status yet (supabase/migrations/002): don't let that block the rest.
+      role === 'manager' ? q(sb.rpc('phone_status', { p_hours: 72 })).catch(() => []) : none,
     ]);
     const me = profiles.find(p => p.id === state.me.id);
     if (me && !me.active) { await signOut(); location.hash = '#/login'; return; }
-    const server = { project, teams, profiles, farms, photos, reports, issues, followUps, at: Date.now() };
+    const server = { project, teams, profiles, farms, photos, reports, issues, followUps, phones, at: Date.now() };
     applyServer(server);
     state.syncError = null;
     await saveCache(server);
@@ -253,9 +256,34 @@ export async function queueReport(report, issueDraft) {
   sync();
 }
 
+// Workers' phones send their internet checks (made on the phone, online or not) so management can see
+// when each phone last had internet. Checks made offline are sent once the phone reconnects.
+let uploadingConn = false;
+export async function uploadConn() {
+  if (!configured || state.me?.role !== 'field' || !navigator.onLine || uploadingConn) return;
+  uploadingConn = true;
+  try {
+    const key = `connUp:${state.me.id}`;
+    const since = (await kvGet(key)) || Date.now() - 72 * 3600e3;
+    const samples = (await getConnSince(since + 1)).sort((a, b) => a.t - b.t);
+    for (let i = 0; i < samples.length; i += 500) {
+      const chunk = samples.slice(i, i + 500);
+      const rows = chunk.map(s => ({ user_id: state.me.id, t: new Date(s.t).toISOString(), online: !!s.online, src: s.src || null }));
+      const { error } = await sb.from('phone_connectivity').upsert(rows, { onConflict: 'user_id,t', ignoreDuplicates: true });
+      if (error) { console.warn('phone checks not sent', error.message); return; }
+      await kvSet(key, chunk[chunk.length - 1].t);
+    }
+  } catch (e) {
+    console.warn('phone checks not sent', e);
+  } finally {
+    uploadingConn = false;
+  }
+}
+
 let syncing = false;
 export async function sync() {
   if (!configured || !state.me || syncing || !navigator.onLine) return;
+  uploadConn();
   if (!state.outbox.some(o => !o.error) && !state.pendingPhotos.length) return;
   syncing = true;
   try {

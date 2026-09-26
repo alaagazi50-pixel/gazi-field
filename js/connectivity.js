@@ -29,13 +29,16 @@ export async function probe() {
 }
 
 let listeners = [];
+let sampleListeners = [];
 let lastState = null;
 export const onConnChange = fn => listeners.push(fn);
+export const onSample = fn => sampleListeners.push(fn);   // after every check is saved
 export const currentConn = () => lastState;
 
 export async function sample(src = 'app') {
   const online = await probe();
   await addConnSample({ t: Date.now(), online, src });
+  sampleListeners.forEach(fn => fn(online));
   if (online !== lastState) { lastState = online; listeners.forEach(fn => fn(online)); }
   return online;
 }
@@ -62,8 +65,14 @@ async function registerPeriodicCheck() {
 
 // Turn raw samples into a compact summary that travels with the daily report.
 export async function connectivitySummary(hours = WINDOW_HOURS, now = Date.now()) {
+  const samples = await getConnSince(now - hours * 3600e3 - HOLD_MS);
+  return summarize(samples, hours, now);
+}
+
+// samples: [{ t: epoch ms, online: bool }]. Time between checks further apart than HOLD_MS is "not observed".
+export function summarize(samples, hours = WINDOW_HOURS, now = Date.now()) {
   const from = now - hours * 3600e3;
-  const samples = (await getConnSince(from - HOLD_MS)).sort((a, b) => a.t - b.t);
+  samples = [...samples].sort((a, b) => a.t - b.t);
   const segs = [];
   const push = (a, b, state) => {
     a = Math.max(a, from); b = Math.min(b, now);

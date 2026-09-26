@@ -182,6 +182,9 @@ Object.assign(S.en, {
   team_code: 'Code (e.g. F)', team_name: 'Name', today_farm: 'Farm today', edit_progress: 'Correct progress', no_team: 'No team',
   email_optional: 'Email (optional, for management/client)',
   storage_limited: 'This phone is not saving data offline. Close other GAZI FIELD tabs and reopen the app.',
+  phones_title: 'Worker phones · internet', no_phone_data: 'No internet checks received yet from this phone',
+  phones_note: 'The app checks for real internet every 3 minutes while it is open. Checks made without signal arrive when the phone reconnects. Grey = app closed.',
+  just_now: 'just now', ago_min: '{n} min ago', ago_h: '{n} h ago', ago_d: '{n} days ago',
 });
 Object.assign(S.pt, {
   sign_in: 'Entrar', sign_out: 'Sair', username: 'Utilizador', username_or_email: 'Utilizador ou email', password: 'Palavra-passe',
@@ -198,6 +201,9 @@ Object.assign(S.pt, {
   team_code: 'Código (ex. F)', team_name: 'Nome', today_farm: 'Fazenda de hoje', edit_progress: 'Corrigir progresso', no_team: 'Sem equipa',
   email_optional: 'Email (opcional, para gestão/cliente)',
   storage_limited: 'Este telefone não está a guardar dados offline. Feche outros separadores GAZI FIELD e reabra a aplicação.',
+  phones_title: 'Telefones dos trabalhadores · internet', no_phone_data: 'Ainda sem verificações de internet deste telefone',
+  phones_note: 'A aplicação verifica a internet real a cada 3 minutos enquanto está aberta. As verificações sem rede chegam quando o telefone volta a ligar-se. Cinzento = aplicação fechada.',
+  just_now: 'agora mesmo', ago_min: 'há {n} min', ago_h: 'há {n} h', ago_d: 'há {n} dias',
 });
 Object.assign(S.ar, {
   sign_in: 'تسجيل الدخول', sign_out: 'تسجيل الخروج', username: 'اسم المستخدم', username_or_email: 'اسم المستخدم أو البريد', password: 'كلمة المرور',
@@ -214,6 +220,9 @@ Object.assign(S.ar, {
   team_code: 'الرمز (مثل F)', team_name: 'الاسم', today_farm: 'مزرعة اليوم', edit_progress: 'تصحيح التقدم', no_team: 'بدون فريق',
   email_optional: 'البريد (اختياري، للإدارة/العميل)',
   storage_limited: 'هذا الهاتف لا يحفظ البيانات دون اتصال. أغلق علامات تبويب GAZI FIELD الأخرى وأعد فتح التطبيق.',
+  phones_title: 'هواتف العمال · الإنترنت', no_phone_data: 'لم تصل أي فحوصات إنترنت من هذا الهاتف بعد',
+  phones_note: 'يفحص التطبيق الإنترنت الفعلي كل 3 دقائق أثناء فتحه. تصل الفحوصات التي تمت بدون شبكة عند عودة الاتصال. الرمادي = التطبيق مغلق.',
+  just_now: 'الآن', ago_min: 'منذ {n} دقيقة', ago_h: 'منذ {n} ساعة', ago_d: 'منذ {n} يوم',
 });
 
 let current = 'en';

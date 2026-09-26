@@ -68,6 +68,15 @@ Do this every time the app changes, for example after Claude has made changes on
 
 If Render hosts the site too, it updates by itself after step 4.
 
+## Own domain: field.gaziltd.com
+gaziltd.com's DNS is managed at Cloudflare.
+1. **Cloudflare:** open gaziltd.com → **DNS → Records → Add record**.
+   - Type **CNAME**, Name **field**, Target **alaagazi50-pixel.github.io**
+   - Proxy status: click the orange cloud so it turns **grey (DNS only)**. GitHub can't issue the security certificate otherwise.
+   - Click **Save**.
+2. **GitHub:** open gazi-field → **Settings → Pages → Custom domain**, type `field.gaziltd.com`, and click **Save**. Wait until the DNS check turns green (minutes to an hour), then tick **Enforce HTTPS**.
+3. The app is now at **https://field.gaziltd.com**. The old github.io address redirects there automatically, and the data and logins stay the same.
+
 ## Optional: host the website on Render instead of GitHub Pages
 Choose this if you want it in the same Render dashboard as delapp. It's also free, and a static site never sleeps.
 1. In **render.com**, click **New → Blueprint** and pick the `gazi-field` repository. Render reads `render.yaml`.
