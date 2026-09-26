@@ -37,7 +37,16 @@ export function topbar({ back, title, right = '' } = {}) {
 // Show an error from a store action in the user's language.
 export function fail(e) {
   const key = e?.message;
-  toast(['needs_connection', 'wrong_login', 'no_access'].includes(key) ? t(key) : (key || 'Error'));
+  toast(['needs_connection', 'wrong_login', 'no_access', 'farm_exists', 'bad_gps'].includes(key) ? t(key) : (key || 'Error'));
+}
+
+// "-12.7765, 15.7391" → { lat, lng }; empty → null; anything else throws 'bad_gps'.
+export function parseGps(text) {
+  const s = String(text || '').trim();
+  if (!s) return null;
+  const m = s.match(/^(-?\d+(?:\.\d+)?)\s*[,; ]\s*(-?\d+(?:\.\d+)?)$/);
+  if (!m || Math.abs(+m[1]) > 90 || Math.abs(+m[2]) > 180) throw new Error('bad_gps');
+  return { lat: +m[1], lng: +m[2] };
 }
 
 export function toast(msg) {

@@ -185,6 +185,9 @@ Object.assign(S.en, {
   phones_title: 'Worker phones · internet', no_phone_data: 'No internet checks received yet from this phone',
   phones_note: 'The app checks for real internet every 3 minutes while it is open. Checks made without signal arrive when the phone reconnects. Grey = app closed.',
   just_now: 'just now', ago_min: '{n} min ago', ago_h: '{n} h ago', ago_d: '{n} days ago',
+  add_farm: 'Add farm', farm_code: 'Farm code', region: 'Region', gps_optional: 'GPS location (optional), e.g. -12.7765, 15.7391',
+  farm_added: 'Farm {id} added', farm_exists: 'A farm with this code already exists', bad_gps: 'GPS must look like -12.7765, 15.7391',
+  farm_details: 'Farm details',
 });
 Object.assign(S.pt, {
   sign_in: 'Entrar', sign_out: 'Sair', username: 'Utilizador', username_or_email: 'Utilizador ou email', password: 'Palavra-passe',
@@ -204,6 +207,9 @@ Object.assign(S.pt, {
   phones_title: 'Telefones dos trabalhadores · internet', no_phone_data: 'Ainda sem verificações de internet deste telefone',
   phones_note: 'A aplicação verifica a internet real a cada 3 minutos enquanto está aberta. As verificações sem rede chegam quando o telefone volta a ligar-se. Cinzento = aplicação fechada.',
   just_now: 'agora mesmo', ago_min: 'há {n} min', ago_h: 'há {n} h', ago_d: 'há {n} dias',
+  add_farm: 'Adicionar fazenda', farm_code: 'Código da fazenda', region: 'Região', gps_optional: 'Localização GPS (opcional), ex. -12.7765, 15.7391',
+  farm_added: 'Fazenda {id} adicionada', farm_exists: 'Já existe uma fazenda com este código', bad_gps: 'O GPS deve ser como -12.7765, 15.7391',
+  farm_details: 'Dados da fazenda',
 });
 Object.assign(S.ar, {
   sign_in: 'تسجيل الدخول', sign_out: 'تسجيل الخروج', username: 'اسم المستخدم', username_or_email: 'اسم المستخدم أو البريد', password: 'كلمة المرور',
@@ -223,6 +229,9 @@ Object.assign(S.ar, {
   phones_title: 'هواتف العمال · الإنترنت', no_phone_data: 'لم تصل أي فحوصات إنترنت من هذا الهاتف بعد',
   phones_note: 'يفحص التطبيق الإنترنت الفعلي كل 3 دقائق أثناء فتحه. تصل الفحوصات التي تمت بدون شبكة عند عودة الاتصال. الرمادي = التطبيق مغلق.',
   just_now: 'الآن', ago_min: 'منذ {n} دقيقة', ago_h: 'منذ {n} ساعة', ago_d: 'منذ {n} يوم',
+  add_farm: 'إضافة مزرعة', farm_code: 'رمز المزرعة', region: 'المنطقة', gps_optional: 'موقع GPS (اختياري)، مثل -12.7765, 15.7391',
+  farm_added: 'تمت إضافة المزرعة {id}', farm_exists: 'توجد مزرعة بهذا الرمز بالفعل', bad_gps: 'يجب أن يكون GPS مثل -12.7765, 15.7391',
+  farm_details: 'بيانات المزرعة',
 });
 
 let current = 'en';

@@ -338,6 +338,13 @@ export const resolveIssue = id => run(sb.from('issues').update({ status: 'resolv
 export const markFollowUp = (teamId, date) => run(sb.from('follow_ups').upsert({ team_id: teamId, date, by: state.me.id })).then(refresh);
 export const saveBoq = (farmId, boq) => run(sb.from('farms').update({ boq, updated_at: new Date().toISOString() }).eq('id', farmId)).then(refresh);
 export const saveStages = (farmId, stages) => run(sb.from('farms').update({ stages, updated_at: new Date().toISOString() }).eq('id', farmId)).then(refresh);
+export async function addFarm({ id, region, teamId, lat, lng }) {
+  if (state.farms.some(f => f.id === id)) throw new Error('farm_exists');
+  await run(sb.from('farms').insert({ id, region, team_id: teamId || null, lat: lat ?? null, lng: lng ?? null }));
+  await refresh();
+}
+export const saveFarmInfo = (farmId, { region, lat, lng }) =>
+  run(sb.from('farms').update({ region, lat: lat ?? null, lng: lng ?? null, updated_at: new Date().toISOString() }).eq('id', farmId)).then(refresh);
 export const setFarmTeam = (farmId, teamId) => run(sb.from('farms').update({ team_id: teamId || null }).eq('id', farmId)).then(refresh);
 export const setTodayFarm = (teamId, farmId) => run(sb.from('teams').update({ today_farm_id: farmId || null }).eq('id', teamId)).then(refresh);
 export const addTeam = (id, name) => run(sb.from('teams').insert({ id, name })).then(refresh);

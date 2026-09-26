@@ -1,8 +1,8 @@
 // Farm hub ("Everything about HM16 lives in HM16"), its sub-pages, and the daily report view.
 import { t, getLang, LANGS } from './i18n.js';
 import { STAGES, farmProgress } from './data.js';
-import { state, me, farm, user, team, issue, photoMeta, setPhotoApproved, resolveIssue, saveBoq, saveStages, setDrawing, setFarmTeam } from './store.js';
-import { esc, stageName, ICONS, topbar, toast, fail, photoImg, hydratePhotos, pct, timeLabel, connBlock, progressBar, pickPhoto } from './ui.js';
+import { state, me, farm, user, team, issue, photoMeta, setPhotoApproved, resolveIssue, saveBoq, saveStages, setDrawing, setFarmTeam, saveFarmInfo } from './store.js';
+import { esc, stageName, ICONS, topbar, toast, fail, photoImg, hydratePhotos, pct, timeLabel, connBlock, progressBar, pickPhoto, parseGps } from './ui.js';
 
 const isMgr = () => me()?.role === 'manager';
 const homeHref = () => (isMgr() ? '#/manage' : '#/');
@@ -35,6 +35,11 @@ export function farmHubView({ farmId }) {
         const stages = Object.fromEntries(STAGES.map(s => [s.id, +form.elements[s.id].value]));
         try { await saveStages(f.id, stages); toast(t('saved')); } catch (err) { fail(err); }
       };
+      root.querySelector('[data-info]').onsubmit = async e => {
+        e.preventDefault();
+        const v = Object.fromEntries(new FormData(e.target));
+        try { const g = parseGps(v.gps); await saveFarmInfo(f.id, { region: v.region.trim(), lat: g?.lat, lng: g?.lng }); toast(t('saved')); } catch (err) { fail(err); }
+      };
       root.querySelector('[data-team]').onchange = async ev => {
         try { await setFarmTeam(f.id, ev.target.value); toast(t('saved')); } catch (err) { fail(err); }
       };
@@ -45,7 +50,12 @@ export function farmHubView({ farmId }) {
 // Management can correct progress directly (e.g. when loading an existing project) and move a farm between teams.
 function stageEditor(f) {
   const opts = v => Array.from({ length: 21 }, (_, i) => i * 5).map(p => `<option value="${p}" ${p === (v || 0) ? 'selected' : ''}>${p}%</option>`).join('');
+  const gps = f.gps.lat || f.gps.lng ? `${f.gps.lat}, ${f.gps.lng}` : '';
   return `<div class="card flat stack">
+    <form data-info class="form"><span class="eyebrow">${esc(t('farm_details'))}</span>
+      <label>${esc(t('region'))}<input class="input" name="region" id="fi-region" value="${esc(f.region)}" required></label>
+      <label>${esc(t('gps_optional'))}<input class="input" name="gps" id="fi-gps" value="${esc(gps)}" placeholder="-12.7765, 15.7391" inputmode="decimal"></label>
+      <button class="btn sm" type="submit" style="align-self:flex-start">${esc(t('save'))}</button></form>
     <label class="form"><span class="eyebrow">${esc(t('team'))}</span>
       <select class="input" data-team><option value="">${esc(t('no_team'))}</option>
         ${state.teams.map(tm => `<option value="${esc(tm.id)}" ${tm.id === f.teamId ? 'selected' : ''}>${esc(tm.name)}</option>`).join('')}</select></label>

@@ -1,5 +1,5 @@
 // Service worker: offline app shell + background connectivity probes.
-const CACHE = 'gazi-field-v0.3.0';
+const CACHE = 'gazi-field-v0.3.1';
 const SHELL = [
   './', './index.html', './manifest.webmanifest', './css/app.css',
   './js/app.js', './js/i18n.js', './js/db.js', './js/data.js', './js/store.js', './js/ui.js',

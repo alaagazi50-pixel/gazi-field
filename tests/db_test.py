@@ -153,6 +153,12 @@ check('worker sees only own phone history', [r[0] for r in as_('jamal', "select 
 check('other worker cannot see Jamal', U['jamal'] not in [r[0] for r in as_('paulo', "select user_id::text from phone_status(12)")])
 check('client sees no phone data', as_('client', "select count(*) from phone_connectivity")[0][0] == 0 and as_('client', "select count(*) from phone_status(12)")[0][0] == 0)
 
+# --- adding farms ---
+check('manager adds a farm', raises('mgr', "insert into farms (id, region, team_id, lat, lng) values ('HM99', 'Huambo', 'A', -12.7, 15.7)") is None)
+check('new farm starts at 0% on every stage', as_('mgr', "select stages->>'room', stages->>'testing' from farms where id='HM99'") == [('0', '0')])
+check('worker cannot add a farm', raises('jamal', "insert into farms (id, region, team_id) values ('HM98', 'Huambo', 'A')") is not None)
+check('client cannot add a farm', raises('client', "insert into farms (id, region) values ('HM97', 'Huambo')") is not None)
+
 print(f'\n{passed} passed, {failed} failed')
 conn.close()
 sys.exit(1 if failed else 0)

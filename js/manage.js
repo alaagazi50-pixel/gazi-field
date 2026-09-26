@@ -1,8 +1,8 @@
 // Management: "sees the day in seconds" dashboard and the farm list.
 import { t, getLang } from './i18n.js';
 import { STAGES, dateKey, hhmm, niceDate, farmProgress, farmStatus } from './data.js';
-import { state, user, team, teamFarm, markFollowUp, refresh } from './store.js';
-import { esc, stageName, topbar, timeLabel, connBlock, progressBar, fail, ago } from './ui.js';
+import { state, user, team, teamFarm, markFollowUp, refresh, addFarm } from './store.js';
+import { esc, stageName, topbar, timeLabel, connBlock, progressBar, fail, ago, toast, parseGps } from './ui.js';
 import { summarize } from './connectivity.js';
 
 export function mgrNav(active) {
@@ -132,6 +132,16 @@ export function farmsListView() {
     html: `<div class="screen wide">${topbar()}<main class="content">
       <div class="row between">${mgrNav('farms')}<button class="btn xs" data-act="csv">${esc(t('export_csv'))}</button></div>
       <h1 class="h1">${esc(t('all_farms'))} · ${state.farms.length}</h1>
+      <details class="card flat"><summary class="h3" style="cursor:pointer">${esc(t('add_farm'))}</summary>
+        <form class="form" data-addfarm style="max-width:520px;margin-top:14px">
+          <label>${esc(t('farm_code'))}<input class="input" name="id" id="nf-id" required pattern="[A-Za-z0-9_\-]{2,12}" placeholder="HM25" autocomplete="off"></label>
+          <label>${esc(t('region'))}<input class="input" name="region" id="nf-region" required placeholder="Huambo" list="nf-regions">
+            <datalist id="nf-regions">${[...new Set(state.farms.map(f => f.region))].map(r => `<option value="${esc(r)}">`).join('')}</datalist></label>
+          <label>${esc(t('team'))}<select class="input" name="team" id="nf-team"><option value="">${esc(t('no_team'))}</option>
+            ${state.teams.map(tm => `<option value="${esc(tm.id)}">${esc(tm.name)}</option>`).join('')}</select></label>
+          <label>${esc(t('gps_optional'))}<input class="input" name="gps" id="nf-gps" placeholder="-12.7765, 15.7391" inputmode="decimal"></label>
+          <button class="btn sm" type="submit" style="align-self:flex-start">${esc(t('add_farm'))}</button>
+        </form></details>
       <input class="input" data-q placeholder="${esc(t('search'))}" value="${esc(q)}" style="max-width:360px">
       <div class="card"><div class="tbl-wrap"><table class="tbl"><thead><tr><th>${esc(t('farm'))}</th><th></th><th>${esc(t('team'))}</th><th>${esc(t('progress'))}</th><th></th><th>${esc(t('last_report'))}</th><th>${esc(t('issues'))}</th></tr></thead>
       <tbody>${rows}</tbody></table></div></div>
@@ -140,6 +150,20 @@ export function farmsListView() {
       const inp = root.querySelector('[data-q]');
       inp.onchange = () => { location.hash = `#/manage/farms?q=${encodeURIComponent(inp.value)}`; };
       root.querySelector('[data-act=csv]').onclick = exportCSV;
+      const form = root.querySelector('[data-addfarm]');
+      form.onsubmit = async e => {
+        e.preventDefault();
+        const btn = form.querySelector('[type=submit]');
+        btn.disabled = true;
+        try {
+          const v = Object.fromEntries(new FormData(form));
+          const gps = parseGps(v.gps);
+          const id = v.id.trim().toUpperCase();
+          await addFarm({ id, region: v.region.trim(), teamId: v.team, lat: gps?.lat, lng: gps?.lng });
+          toast(t('farm_added', { id }));
+          location.hash = `#/farm/${id}`;
+        } catch (err) { fail(err); } finally { btn.disabled = false; }
+      };
     },
   };
 }

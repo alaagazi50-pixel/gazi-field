@@ -11,7 +11,7 @@ import { dashboardView, farmsListView } from './manage.js';
 import { peopleView } from './people.js';
 import { clientView, clientFarmView } from './client.js';
 
-export const APP_VERSION = '0.3.0';
+export const APP_VERSION = '0.3.1';
 
 // [path, view, roles allowed]. Roles: field (worker), manager, client.
 const ROUTES = [
