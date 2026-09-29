@@ -94,7 +94,7 @@ check('farms have an optional name', raises('mgr', "update farms set name = 'Faz
 check('worker cannot edit farms directly', as_('jamal', "update farms set stages = '{}' where id='HM16'") == 0)
 check('worker cannot promote self', as_('jamal', "update profiles set role='manager' where id=%s", (U['jamal'],)) == 0)
 check('client cannot approve photos', as_('client', "update photos set approved=true") == 0)
-check('unknown roles are refused', raises('mgr', "update profiles set role='boss' where id=%s", (U['paulo'],)) is not None)
+check('unknown roles are refused', raises('sup', "update profiles set role='boss' where id=%s", (U['paulo'],)) is not None)
 
 # --- photos ---
 p1, p2, p3, p4 = (str(uuid.uuid4()) for _ in range(4))
@@ -196,6 +196,15 @@ check('cancelled farm refuses daily reports', raises('mgr', "update farms set st
 check('farm status only active/cancelled', raises('mgr', "update farms set status = 'paused' where id = 'ML06'") is not None)
 check('farm details stored', raises('mgr', """update farms set details = '{"system":"Drip","area_ha":5}' where id = 'ML04'""") is None
       and as_('jamal', "select details->>'system' from farms where id = 'ML04'") == [('Drip',)])
+
+# --- managers are limited: only supervisors manage people and teams ---
+check('manager cannot change accounts', as_('mgr', "update profiles set team_id='C' where id=%s", (U['jamal'],)) == 0)
+check('manager cannot create teams', raises('mgr', "insert into teams (id, name) values ('Z', 'Team Z')") is not None)
+check('manager cannot rename teams', as_('mgr', "update teams set name = 'X' where id = 'A'") == 0)
+check('manager still sees teams (dashboard)', as_('mgr', "select count(*) from teams")[0][0] == 5)
+check('supervisor changes accounts', as_('sup', "update profiles set lang='pt' where id=%s", (U['jamal'],)) == 1)
+check('supervisor creates teams', raises('sup', "insert into teams (id, name) values ('Z', 'Team Z')") is None)
+check('manager still runs farms (progress correction)', as_('mgr', "update farms set name = 'Test' where id = 'HM17'") == 1)
 
 print(f'\n{passed} passed, {failed} failed')
 conn.close()

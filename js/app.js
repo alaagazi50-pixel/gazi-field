@@ -11,7 +11,7 @@ import { peopleView } from './people.js';
 import { analysisView } from './analysis.js';
 import { clientView, clientFarmView } from './client.js';
 
-export const APP_VERSION = '0.5.2';
+export const APP_VERSION = '0.5.3';
 
 // [path, view, roles allowed]. Roles: field (worker), manager, client.
 const ROUTES = [
@@ -30,7 +30,7 @@ const ROUTES = [
   ['/manage', dashboardView, ['manager', 'supervisor']],
   ['/manage/analysis', analysisView, ['supervisor']],
   ['/manage/farms', farmsListView, ['manager', 'supervisor']],
-  ['/manage/people', peopleView, ['manager', 'supervisor']],
+  ['/manage/people', peopleView, ['supervisor']],
   ['/client', clientView, ['client', 'manager', 'supervisor']],
   ['/client/farm/:farmId', clientFarmView, ['client', 'manager', 'supervisor']],
 ];

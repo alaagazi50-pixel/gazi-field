@@ -19,12 +19,12 @@ Deno.serve(async (req) => {
     const url = Deno.env.get('SUPABASE_URL')!;
     const admin = createClient(url, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
 
-    // Who is calling? Must be an active manager or supervisor.
+    // Who is calling? Must be an active supervisor (managers don't manage people).
     const jwt = (req.headers.get('Authorization') || '').replace('Bearer ', '');
     const { data: { user }, error: userErr } = await admin.auth.getUser(jwt);
     if (userErr || !user) return json({ error: 'Not signed in' }, 401);
     const { data: me } = await admin.from('profiles').select('role, active').eq('id', user.id).single();
-    if (!me || !['manager', 'supervisor'].includes(me.role) || !me.active) return json({ error: 'Only managers and supervisors can manage accounts' }, 403);
+    if (!me || me.role !== 'supervisor' || !me.active) return json({ error: 'Only supervisors can manage accounts' }, 403);
 
     const body = await req.json();
 

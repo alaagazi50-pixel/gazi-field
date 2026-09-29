@@ -6,7 +6,7 @@ import { esc, stageName, topbar, timeLabel, progressBar, fail, toast, parseGps, 
 
 export function mgrNav(active) {
   const a = (k, href, label) => `<a class="${active === k ? 'on' : ''}" href="${href}">${esc(label)}</a>`;
-  return `<nav class="segmented">${a('dash', '#/manage', t('dashboard'))}${me()?.role === 'supervisor' ? a('analysis', '#/manage/analysis', t('analysis')) : ''}${a('farms', '#/manage/farms', t('farms'))}${a('people', '#/manage/people', t('people'))}${a('client', '#/client', t('client_portal'))}</nav>`;
+  return `<nav class="segmented">${a('dash', '#/manage', t('dashboard'))}${me()?.role === 'supervisor' ? a('analysis', '#/manage/analysis', t('analysis')) : ''}${a('farms', '#/manage/farms', t('farms'))}${me()?.role === 'supervisor' ? a('people', '#/manage/people', t('people')) : ''}${a('client', '#/client', t('client_portal'))}</nav>`;
 }
 
 async function alertsCard() {
