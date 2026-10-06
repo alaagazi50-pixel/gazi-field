@@ -1,5 +1,5 @@
 // Service worker: offline app shell, push reminders, and automatic upload of reports queued offline.
-const CACHE = 'gazi-field-v0.5.4';
+const CACHE = 'gazi-field-v0.5.5';
 const SHELL = [
   './', './index.html', './manifest.webmanifest', './css/app.css',
   './js/app.js', './js/i18n.js', './js/db.js', './js/data.js', './js/store.js', './js/ui.js',
@@ -24,7 +24,7 @@ self.addEventListener('fetch', e => {
 
   if (url.origin === location.origin) {
     // Network first so updates land quickly; cache when offline.
-    e.respondWith(fetch(e.request).then(res => {
+    e.respondWith(fetch(e.request, { cache: 'no-cache' }).then(res => {   // always ask the server, skip the 10-min browser cache
       const copy = res.clone();
       caches.open(CACHE).then(c => c.put(e.request, copy));
       return res;
