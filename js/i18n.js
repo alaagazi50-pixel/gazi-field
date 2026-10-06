@@ -295,6 +295,7 @@ Object.assign(S.ar, {
 
 // v0.5: the project's real stages, farm details, urgent problems.
 Object.assign(S.en, {
+  workers_reported_today: 'workers reported today', farms_updated_today: 'farms updated today', open_problems_total: 'open problems need attention', on_these_farms: 'On these farms:', open_problems: 'Open problems', no_open_problems: 'No open problems', workers_today: 'Workers today', reports_today: 'Reports from today', problem: 'Problem',
   daily_report: 'Daily report', daily_report_hint: 'Choose the farm and report today\'s work',
   st_concrete_floor: 'Concrete floor', st_room_structure: 'Room structure', st_excavation: 'Excavation',
   st_room_irrigation: 'Room irrigation system', st_drip_sprinklers: 'Drip & sprinklers', st_main_line: 'Main line',
@@ -313,6 +314,7 @@ Object.assign(S.en, {
   download_drawings: 'Save all drawings on this phone', drawings_saved: '{n} drawings saved for offline use',
 });
 Object.assign(S.pt, {
+  workers_reported_today: 'trabalhadores reportaram hoje', farms_updated_today: 'fazendas atualizadas hoje', open_problems_total: 'problemas abertos precisam de atenção', on_these_farms: 'Nestas fazendas:', open_problems: 'Problemas abertos', no_open_problems: 'Sem problemas abertos', workers_today: 'Trabalhadores hoje', reports_today: 'Relatórios de hoje', problem: 'Problema',
   daily_report: 'Relatório diário', daily_report_hint: 'Escolha a fazenda e reporte o trabalho de hoje',
   st_concrete_floor: 'Piso de concreto', st_room_structure: 'Estrutura da sala', st_excavation: 'Escavação',
   st_room_irrigation: 'Sala de sistema de irrigação', st_drip_sprinklers: 'Gota a gota e aspersores', st_main_line: 'Linha principal',
@@ -331,6 +333,7 @@ Object.assign(S.pt, {
   download_drawings: 'Guardar todos os desenhos no telefone', drawings_saved: '{n} desenhos guardados para uso sem rede',
 });
 Object.assign(S.ar, {
+  workers_reported_today: 'عمال أرسلوا اليوم', farms_updated_today: 'مزارع حُدّثت اليوم', open_problems_total: 'مشاكل مفتوحة تحتاج انتباه', on_these_farms: 'في هذه المزارع:', open_problems: 'المشاكل المفتوحة', no_open_problems: 'لا توجد مشاكل مفتوحة', workers_today: 'العمال اليوم', reports_today: 'تقارير اليوم', problem: 'المشكلة',
   daily_report: 'التقرير اليومي', daily_report_hint: 'اختر المزرعة وأبلغ عن عمل اليوم',
   st_concrete_floor: 'الأرضية الخرسانية', st_room_structure: 'هيكل الغرفة', st_excavation: 'الحفر',
   st_room_irrigation: 'نظام ري الغرفة', st_drip_sprinklers: 'التنقيط والرشاشات', st_main_line: 'الخط الرئيسي',

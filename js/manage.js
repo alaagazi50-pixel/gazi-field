@@ -19,47 +19,52 @@ async function alertsCard() {
 export async function dashboardView() {
   const today = dateKey();
   const todays = state.reports.filter(r => r.date === today).sort((a, b) => b.submittedAt - a.submittedAt);
-  const teamsReported = new Set(todays.map(r => r.teamId));
-  const missing = state.teams.filter(tm => !teamsReported.has(tm.id));
   const openIssues = state.issues.filter(i => i.status === 'open' && !i.pending).sort((a, b) => (b.urgent - a.urgent) || b.at - a.at);
   const farmsUpdated = new Set(todays.map(r => r.farmId)).size;
+  const workers = state.users.filter(u => u.role === 'field' && u.active).sort((a, b) => a.name.localeCompare(b.name));
+  const reportsBy = new Map();
+  todays.forEach(r => { if (!reportsBy.has(r.userId)) reportsBy.set(r.userId, []); reportsBy.get(r.userId).push(r); });
+  const workersReported = workers.filter(u => reportsBy.has(u.id)).length;
+  const fTitle = id => farmTitle(farm(id) || { id });
+
+  // Which farms have open problems, with how many (urgent ones marked)
+  const byFarm = new Map();
+  openIssues.forEach(i => {
+    const e = byFarm.get(i.farmId) || { n: 0, urgent: false };
+    e.n++; e.urgent ||= i.urgent;
+    byFarm.set(i.farmId, e);
+  });
+  const farmChips = [...byFarm.entries()].sort((a, b) => (b[1].urgent - a[1].urgent) || b[1].n - a[1].n)
+    .map(([id, e]) => `<a class="farmchip" href="#/farm/${esc(id)}/issues">${e.urgent ? '⚠ ' : ''}${esc(fTitle(id))} · ${e.n}</a>`).join('');
 
   const issueReport = i => state.reports.find(r => r.id === i.reportId || r.issueId === i.id);
-  const attention = [
-    ...openIssues.map(i => {
-      const r = issueReport(i);
-      return `<tr style="${i.urgent ? 'background:#fdecE4' : ''}"><td class="num">${esc(farmTitle(farm(i.farmId) || { id: i.farmId }))}</td>
-        <td>${i.urgent ? `<span class="tag warn">⚠ ${esc(t('urgent_tag'))}</span> ` : ''}${esc(stageName(i.stage))} / ${esc(t('cat_' + i.category))}${i.note ? `<div class="small muted" dir="auto">${esc(i.note.slice(0, 90))}</div>` : ''}</td>
-        <td>${esc(t('reported_by', { n: user(i.reportedBy)?.name || '—', t: hhmm(i.at) }))}</td>
-        <td><a class="btn xs" href="${r ? `#/report/${r.id}` : `#/farm/${i.farmId}/issues`}">${esc(t('review'))}</a></td></tr>`;
-    }),
-    ...missing.map(tm => {
-      const f = tm.todayFarm && farm(tm.todayFarm);
-      const fu = state.followUps[`${tm.id}|${today}`];
-      return `<tr><td class="num">${esc(f ? farmTitle(f) : tm.name)}</td><td>${esc(t('daily_report_missing'))}</td>
-        <td>${esc(tm.name)} · ${esc(fu ? t('followed_up', { t: hhmm(fu) }) : t('awaiting_report'))}</td>
-        <td><button class="btn xs" data-follow="${tm.id}" ${fu ? 'disabled' : ''}>${esc(t('follow_up'))}</button></td></tr>`;
-    }),
-  ].join('');
+  const problemRows = openIssues.map(i => {
+    const r = issueReport(i);
+    return `<tr style="${i.urgent ? 'background:#fdece4' : ''}"><td class="num">${esc(fTitle(i.farmId))}</td>
+      <td>${i.urgent ? `<span class="tag warn">⚠ ${esc(t('urgent_tag'))}</span> ` : ''}${esc(stageName(i.stage))} / ${esc(t('cat_' + i.category))}${i.note ? `<div class="small muted" dir="auto">${esc(i.note.slice(0, 90))}</div>` : ''}</td>
+      <td>${esc(t('reported_by', { n: user(i.reportedBy)?.name || '—', t: timeLabel(i.at) }))}</td>
+      <td><a class="btn xs" href="${r ? `#/report/${r.id}` : `#/farm/${i.farmId}/issues`}">${esc(t('review'))}</a></td></tr>`;
+  }).join('');
 
-  const reported = todays.map(r => {
+  const workerRows = workers.map(u => {
+    const reps = reportsBy.get(u.id) || [];
+    const fu = u.teamId && state.followUps[`${u.teamId}|${today}`];
+    return `<tr><td><strong>${esc(u.name)}</strong>${u.teamId ? ` <span class="small muted">(${esc(team(u.teamId).name)})</span>` : ''}</td>
+      <td>${reps.length ? reps.map(r => `<a class="tag ok" href="#/report/${r.id}" style="text-decoration:none">✓ ${esc(r.farmId)} · ${hhmm(r.submittedAt)}</a>`).join(' ')
+        : `<span class="tag warn">${esc(t('not_reported'))}</span>`}</td>
+      <td style="text-align:end">${!reps.length && u.teamId ? `<button class="btn xs" data-follow="${esc(u.teamId)}" ${fu ? 'disabled' : ''}>${esc(fu ? t('followed_up', { t: hhmm(fu) }) : t('follow_up'))}</button>` : ''}</td></tr>`;
+  }).join('');
+
+  const reportRows = todays.map(r => {
     const changes = r.items.filter(i => i.action === 'updated').map(i => `${stageName(i.stage)} ${i.prev} → ${i.next}%`).join(' · ');
     const n = reportIssues(r).length;
-    return `<tr><td class="num">${esc(farmTitle(farm(r.farmId) || { id: r.farmId }))}</td><td>${esc(changes || t('no_changes'))}${n ? ` <span class="tag warn">${esc(t('issues'))} · ${n}</span>` : ''}</td>
-      <td>${r.teamId ? esc(team(r.teamId).name) + ' / ' : ''}${esc(user(r.userId)?.name)} · ${hhmm(r.submittedAt)}
+    return `<tr><td class="num">${esc(fTitle(r.farmId))}</td><td>${esc(changes || t('no_changes'))}${n ? ` <span class="tag warn">${esc(t('issues'))} · ${n}</span>` : ''}</td>
+      <td>${esc(user(r.userId)?.name)}${r.teamId ? ` <span class="small muted">(${esc(team(r.teamId).name)})</span>` : ''} · ${esc(timeLabel(r.submittedAt))}
         ${r.location && !r.location.verified ? `<span class="tag warn">GPS</span>` : ''}</td>
       <td><a class="btn xs" href="#/report/${r.id}">${esc(t('review'))}</a></td></tr>`;
   }).join('');
 
-  const teamRows = state.teams.map(tm => {
-    const tf = teamFarm(tm.id);
-    const rep = todays.find(r => r.teamId === tm.id);
-    return `<div class="card flat stack">
-      <div class="row between"><strong>${esc(tm.name)} · ${esc(tf?.id || '—')}</strong>
-        <span class="tag ${rep ? 'ok' : 'warn'}">${esc(rep ? `${t('reported')} ${hhmm(rep.submittedAt)}` : t('not_reported'))}</span></div>
-    </div>`;
-  }).join('');
-
+  const section = (title, body) => `<div class="card stack"><h2 class="h3">${esc(title)}</h2>${body}</div>`;
   return {
     html: `<div class="screen wide">${topbar()}<main class="content">
       <div class="row between">${mgrNav('dash')}<span class="row"><span class="eyebrow muted">${esc(niceDate(Date.now(), getLang()))}${state.lastSync ? ` · ${esc(t('synced_at', { t: hhmm(state.lastSync) }))}` : ''}</span>
@@ -67,21 +72,26 @@ export async function dashboardView() {
       ${state.syncError ? `<div class="card alert flat small">${esc(t('sync_failed'))}</div>` : ''}
       <h1 class="h1">${esc(t('dashboard'))}</h1>
       ${await alertsCard()}
-      <div class="card stack" style="gap:18px">
-        <div class="eyebrow">GAZI FIELD · ${esc(state.project.name.toUpperCase())} · ${esc(t('today').toUpperCase())}</div>
-        <div class="grid c3">
-          <div class="kpi"><span class="v">${teamsReported.size} / ${state.teams.length}</span><span>${esc(t('teams_reported'))}</span></div>
-          <div class="kpi"><span class="v">${farmsUpdated}</span><span>${esc(t('farms_updated'))}</span></div>
-          <div class="kpi ${openIssues.length + missing.length ? 'hot' : ''}"><span class="v">${openIssues.length + missing.length}</span><span>${esc(t('need_attention'))}</span></div>
+      <div class="card stack" style="gap:16px">
+        <div class="eyebrow">GAZI FIELD · ${esc(state.project.name.toUpperCase())} · ${esc(niceDate(Date.now(), getLang()).toUpperCase())}</div>
+        <div class="grid c2">
+          <div class="kpi center"><span class="v">${workersReported} / ${workers.length}</span><span>${esc(t('workers_reported_today'))}</span></div>
+          <div class="kpi center"><span class="v">${farmsUpdated}</span><span>${esc(t('farms_updated_today'))}</span></div>
         </div>
-        ${attention ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>${esc(t('farm'))}</th><th>${esc(t('update'))}</th><th>${esc(t('reported'))}</th><th>${esc(t('action'))}</th></tr></thead><tbody>${attention}</tbody></table></div>` : ''}
+        <div class="attn ${openIssues.length ? 'hot' : ''}">
+          <span class="v">${openIssues.length}</span>
+          <span class="strong">${esc(t('open_problems_total'))}</span>
+          ${openIssues.length ? `<div class="small">${esc(t('on_these_farms'))}</div><div>${farmChips}</div>` : `<div class="small">${esc(t('no_open_problems'))}</div>`}
+        </div>
       </div>
-      <div class="card stack">
-        <div class="eyebrow">${esc(t('reported_today'))}</div>
-        ${reported ? `<div class="tbl-wrap"><table class="tbl"><tbody>${reported}</tbody></table></div>` : `<div class="empty">${esc(t('no_history'))}</div>`}
-      </div>
-      <div class="eyebrow">${esc(t('teams_status'))}</div>
-      <div class="grid c3">${teamRows}</div>
+      ${section(t('open_problems'), problemRows
+        ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>${esc(t('farm'))}</th><th>${esc(t('problem'))}</th><th>${esc(t('reported'))}</th><th></th></tr></thead><tbody>${problemRows}</tbody></table></div>`
+        : `<div class="empty">${esc(t('no_open_problems'))}</div>`)}
+      ${section(t('workers_today'), workers.length
+        ? `<div class="tbl-wrap"><table class="tbl"><tbody>${workerRows}</tbody></table></div>` : `<div class="empty">—</div>`)}
+      ${section(t('reports_today'), reportRows
+        ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>${esc(t('farm'))}</th><th>${esc(t('update'))}</th><th>${esc(t('reported'))}</th><th></th></tr></thead><tbody>${reportRows}</tbody></table></div>`
+        : `<div class="empty">${esc(t('no_history'))}</div>`)}
     </main></div>`,
     mount(root) {
       root.querySelectorAll('[data-follow]').forEach(b => b.onclick = async () => {

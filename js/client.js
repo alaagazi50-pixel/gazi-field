@@ -37,13 +37,20 @@ export function clientFarmView({ farmId }) {
   const f = farm(farmId);
   const p = farmProgress(f);
   const photos = state.photos.filter(ph => ph.farmId === f.id && ph.approved).sort((a, b) => b.takenAt - a.takenAt);
-  const started = STAGES.filter(s => f.stages[s.id] > 0).map(s => `${stageName(s.id)} ${f.stages[s.id]}%`).join(' · ');
+  const dates = f.details?.stage_dates || {};
+  const stageRows = STAGES.map(st => {
+    const v = f.stages[st.id] || 0, dt = dates[st.id];
+    const when = dt ? (dt.status === 'ready' ? t('done_on', { d: dt.date }) : t('since', { d: dt.date })) : '';
+    return `<div class="stage-row"><span>${esc(stageName(st.id))}${when ? `<br><span class="small muted">${esc(when)}</span>` : ''}</span>
+      <span>${progressBar(v)}</span>
+      <span class="tag ${v >= 100 ? 'ok' : v > 0 ? 'amber' : ''}">${v >= 100 ? esc(t('ready')) : v > 0 ? `${v}%` : esc(t('not_started'))}</span></div>`;
+  }).join('');
   return {
     html: `<div class="screen wide">${topbar({ back: '#/client' })}<main class="content">
       <div class="eyebrow">${esc(t('client_portal'))}</div>
-      <h1 class="h1">${esc(farmTitle(f))}</h1><div class="strong">${p}% ${esc(t('in_progress'))}</div>
-      <div>${esc(started)}</div>
-      ${progressBar(p)}
+      <h1 class="h1">${esc(farmTitle(f))}</h1>
+      <div class="stack" style="gap:6px"><div class="strong">${p}% ${esc(t('in_progress'))}</div>${progressBar(p)}</div>
+      <div class="card flat stack"><div class="eyebrow">${esc(t('stage_status'))}</div><div>${stageRows}</div></div>
       ${photos.length ? `<div class="photos" style="grid-template-columns:repeat(auto-fill,minmax(220px,1fr))">${photos.map(ph => `<div class="ph">
         <button class="imgbtn" data-zoom="${ph.id}">${photoImg(ph.id)}</button>
         <div>${esc(stageName(ph.stage))}${ph.progress != null ? ` · ${ph.progress}%` : ''} · ${esc(t('approved'))}</div></div>`).join('')}</div>`
