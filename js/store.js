@@ -488,7 +488,9 @@ export const markFollowUp = (teamId, date) => run(sb.from('follow_ups').upsert({
 export const saveBoq = (farmId, boq) => run(sb.from('farms').update({ boq, updated_at: new Date().toISOString() }).eq('id', farmId)).then(refresh);
 export const saveStages = (farmId, stages) => run(sb.from('farms').update({ stages, updated_at: new Date().toISOString() }).eq('id', farmId)).then(refresh);
 export async function addFarm({ id, name, region, teamId, lat, lng }) {
-  if (state.farms.some(f => f.id === id)) throw new Error('farm_exists');
+  // HM21, hm-21 and HM-21 are the same farm: compare codes without dashes, spaces or case.
+  const norm = s => s.toUpperCase().replace(/[-_ ]/g, '').replace(/^([A-Z]+)0*(\d)/, '$1$2');
+  if (state.farms.some(f => norm(f.id) === norm(id))) throw new Error('farm_exists');
   await run(sb.from('farms').insert({ id, name: name || null, region, team_id: teamId || null, lat: lat ?? null, lng: lng ?? null }));
   await refresh();
 }
