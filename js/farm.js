@@ -48,6 +48,7 @@ export function farmHubView({ farmId }) {
         ${item('issues', 'issues', t('issues'), openIssues)}
       </nav>
       ${detailsCard(f)}
+      ${isMgr() && f.status !== 'cancelled' ? `<a class="btn" href="#/work/${esc(f.id)}">＋ ${esc(t('report_with_photos'))}</a>` : ''}
       ${isMgr() ? stageEditor(f) : stageList(f)}
     </main></div>`,
     mount(root) {

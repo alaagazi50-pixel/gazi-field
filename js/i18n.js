@@ -296,6 +296,7 @@ Object.assign(S.ar, {
 // v0.5: the project's real stages, farm details, urgent problems.
 Object.assign(S.en, {
   workers_reported_today: 'workers reported today', farms_updated_today: 'farms updated today', open_problems_total: 'open problems need attention', on_these_farms: 'On these farms:', open_problems: 'Open problems', no_open_problems: 'No open problems', workers_today: 'Workers today', reports_today: 'Reports from today', problem: 'Problem',
+  done_no_power: 'Completed without electricity', by_region: 'By region', total: 'Total', report_with_photos: 'Daily report with photos', no_power_hint: 'Completed without electricity = every stage ready except electricity & generator and handover.',
   daily_report: 'Daily report', daily_report_hint: 'Choose the farm and report today\'s work',
   st_concrete_floor: 'Concrete floor', st_room_structure: 'Room structure', st_excavation: 'Excavation',
   st_room_irrigation: 'Room irrigation system', st_drip_sprinklers: 'Drip & sprinklers', st_main_line: 'Main line',
@@ -315,6 +316,7 @@ Object.assign(S.en, {
 });
 Object.assign(S.pt, {
   workers_reported_today: 'trabalhadores reportaram hoje', farms_updated_today: 'fazendas atualizadas hoje', open_problems_total: 'problemas abertos precisam de atenção', on_these_farms: 'Nestas fazendas:', open_problems: 'Problemas abertos', no_open_problems: 'Sem problemas abertos', workers_today: 'Trabalhadores hoje', reports_today: 'Relatórios de hoje', problem: 'Problema',
+  done_no_power: 'Concluída sem eletricidade', by_region: 'Por província', total: 'Total', report_with_photos: 'Relatório diário com fotos', no_power_hint: 'Concluída sem eletricidade = todas as etapas prontas exceto eletricidade e gerador e entrega.',
   daily_report: 'Relatório diário', daily_report_hint: 'Escolha a fazenda e reporte o trabalho de hoje',
   st_concrete_floor: 'Piso de concreto', st_room_structure: 'Estrutura da sala', st_excavation: 'Escavação',
   st_room_irrigation: 'Sala de sistema de irrigação', st_drip_sprinklers: 'Gota a gota e aspersores', st_main_line: 'Linha principal',
@@ -334,6 +336,7 @@ Object.assign(S.pt, {
 });
 Object.assign(S.ar, {
   workers_reported_today: 'عمال أرسلوا اليوم', farms_updated_today: 'مزارع حُدّثت اليوم', open_problems_total: 'مشاكل مفتوحة تحتاج انتباه', on_these_farms: 'في هذه المزارع:', open_problems: 'المشاكل المفتوحة', no_open_problems: 'لا توجد مشاكل مفتوحة', workers_today: 'العمال اليوم', reports_today: 'تقارير اليوم', problem: 'المشكلة',
+  done_no_power: 'مكتملة بدون كهرباء', by_region: 'حسب المنطقة', total: 'المجموع', report_with_photos: 'تقرير يومي مع صور', no_power_hint: 'مكتملة بدون كهرباء = كل المراحل جاهزة ما عدا الكهرباء والمولد والتسليم.',
   daily_report: 'التقرير اليومي', daily_report_hint: 'اختر المزرعة وأبلغ عن عمل اليوم',
   st_concrete_floor: 'الأرضية الخرسانية', st_room_structure: 'هيكل الغرفة', st_excavation: 'الحفر',
   st_room_irrigation: 'نظام ري الغرفة', st_drip_sprinklers: 'التنقيط والرشاشات', st_main_line: 'الخط الرئيسي',

@@ -1,16 +1,16 @@
 // Domain constants and pure helpers. Farms, teams and people live in the database (see supabase/).
 
 // The project's 9 stages, as in the PDAC progress tracking table (same list as gazi_stages() in the database).
-// Equal weights: each stage is 1/9 of a farm's progress.
+// Weights (total 13): a stage's share of a farm's progress follows the work it takes.
 export const STAGES = [
   { id: 'concrete_floor', code: 'FLOOR', weight: 1 },
   { id: 'room_structure', code: 'ROOM', weight: 1 },
-  { id: 'excavation', code: 'EXCAVATION', weight: 1 },
+  { id: 'excavation', code: 'EXCAVATION', weight: 2 },
   { id: 'room_irrigation', code: 'ROOM IRRIG', weight: 1 },
-  { id: 'drip_sprinklers', code: 'DRIP-SPRINK', weight: 1 },
+  { id: 'drip_sprinklers', code: 'DRIP-SPRINK', weight: 2 },
   { id: 'main_line', code: 'MAIN LINE', weight: 1 },
-  { id: 'secondary_lines', code: 'SECONDARY', weight: 1 },
-  { id: 'electricity', code: 'ELECTRICITY', weight: 1 },
+  { id: 'secondary_lines', code: 'SECONDARY', weight: 2 },
+  { id: 'electricity', code: 'ELECTRICITY', weight: 2 },
   { id: 'commissioning', code: 'HANDOVER', weight: 1 },
 ];
 export const CATEGORIES = ['access', 'material', 'equipment', 'technical', 'client', 'other'];
@@ -43,6 +43,17 @@ export function farmStatus(farm) {
   const p = farmProgress(farm);
   return p >= 100 ? 'completed' : p > 0 ? 'in_progress' : 'not_started';
 }
+// Ready apart from electricity (and the handover that needs it): the farm can't run yet.
+const NEEDS_POWER = ['electricity', 'commissioning'];
+export function completion(farm) {
+  if (farm.status === 'cancelled') return 'cancelled';
+  const st = farmStatus(farm);
+  if (st !== 'completed' && STAGES.every(s => NEEDS_POWER.includes(s.id) || (farm.stages[s.id] || 0) >= 100)) return 'no_power';
+  return st;
+}
+// HM-2 before HM-10; BIE before Huambo when sorting by region.
+export const byFarmCode = (a, b) => a.id.localeCompare(b.id, 'en', { numeric: true });
+export const byRegion = (a, b) => (a || '').localeCompare(b || '', 'pt');
 export function distanceKm(a, b) {
   const R = 6371, rad = x => x * Math.PI / 180;
   const dLat = rad(b.lat - a.lat), dLng = rad(b.lng - a.lng);

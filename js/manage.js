@@ -71,6 +71,7 @@ export async function dashboardView() {
         <button class="btn ghost xs" data-act="refresh">${esc(t('refresh'))}</button></span></div>
       ${state.syncError ? `<div class="card alert flat small">${esc(t('sync_failed'))}</div>` : ''}
       <h1 class="h1">${esc(t('dashboard'))}</h1>
+      <div class="row"><a class="btn sm" href="#/choose">＋ ${esc(t('daily_report'))}</a><a class="btn sm ghost" href="#/problem">⚠ ${esc(t('urgent_btn'))}</a></div>
       ${await alertsCard()}
       <div class="card stack" style="gap:16px">
         <div class="eyebrow">GAZI FIELD · ${esc(state.project.name.toUpperCase())} · ${esc(niceDate(Date.now(), getLang()).toUpperCase())}</div>

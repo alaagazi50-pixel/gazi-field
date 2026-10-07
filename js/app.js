@@ -11,19 +11,19 @@ import { peopleView } from './people.js';
 import { analysisView } from './analysis.js';
 import { clientView, clientFarmView } from './client.js';
 
-export const APP_VERSION = '0.5.5';
+export const APP_VERSION = '0.6.0';
 
 // [path, view, roles allowed]. Roles: field (worker), manager, client.
 const ROUTES = [
   ['/settings', settingsView],
-  ['/sync', syncView, ['field']],
+  ['/sync', syncView, ['field', 'manager', 'supervisor']],
   ['/pick-farm', pickFarmView, ['field']],
-  ['/update/:farmId', updateView, ['field']],
-  ['/done/:reportId', doneView, ['field']],
-  ['/choose', chooseView, ['field']],
-  ['/work/:farmId', workView, ['field']],
-  ['/problem', problemView, ['field']],
-  ['/problem/:farmId', problemView, ['field']],
+  ['/update/:farmId', updateView, ['field', 'manager', 'supervisor']],
+  ['/done/:reportId', doneView, ['field', 'manager', 'supervisor']],
+  ['/choose', chooseView, ['field', 'manager', 'supervisor']],
+  ['/work/:farmId', workView, ['field', 'manager', 'supervisor']],
+  ['/problem', problemView, ['field', 'manager', 'supervisor']],
+  ['/problem/:farmId', problemView, ['field', 'manager', 'supervisor']],
   ['/report/:reportId', reportView, ['field', 'manager', 'supervisor']],
   ['/farm/:farmId', farmHubView, ['field', 'manager', 'supervisor']],
   ['/farm/:farmId/:sub', farmSubView, ['field', 'manager', 'supervisor']],

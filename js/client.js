@@ -1,33 +1,70 @@
 // Client portal: same data, only approved photos, no internal notes, names or issues.
 import { t } from './i18n.js';
-import { STAGES, farmProgress, farmStatus } from './data.js';
+import { STAGES, farmProgress, completion, byFarmCode, byRegion } from './data.js';
 import { state, me, farm, isMgr } from './store.js';
 import { esc, stageName, topbar, progressBar, hydratePhotos, photoImg, farmTitle } from './ui.js';
 import { mgrNav } from './manage.js';
 
+const TAG = {
+  completed: ['ok', 'completed'], no_power: ['blue', 'done_no_power'], in_progress: ['amber', 'in_progress'],
+  not_started: ['', 'not_started'], cancelled: ['', 'cancelled'],
+};
+const tagFor = st => `<span class="tag ${TAG[st][0]}">${st === 'completed' ? '✓ ' : st === 'no_power' ? '⚡ ' : ''}${esc(t(TAG[st][1]))}</span>`;
+const count = (list, st) => list.filter(f => completion(f) === st).length;
+const avgOf = list => list.length ? Math.round(list.reduce((n, f) => n + farmProgress(f), 0) / list.length) : 0;
+
 export function clientView() {
-  const farms = state.farms.filter(f => f.status !== 'cancelled');
-  const avg = Math.round(farms.reduce((s, f) => s + farmProgress(f), 0) / farms.length);
-  const done = farms.filter(f => farmStatus(f) === 'completed').length;
-  const inProg = farms.filter(f => farmStatus(f) === 'in_progress').sort((a, b) => farmProgress(b) - farmProgress(a));
+  const all = [...state.farms].sort(byFarmCode);
+  const live = all.filter(f => f.status !== 'cancelled');
+  const regions = [...new Set(all.map(f => f.region || '—'))].sort(byRegion);
+  const kpi = (v, label, cls = '') => `<div class="kpi center ${cls}" style="background:#fff"><span class="v">${v}</span><span>${esc(label)}</span></div>`;
+  const chips = st => live.filter(f => completion(f) === st)
+    .map(f => `<a class="farmchip ${st}" href="#/client/farm/${esc(f.id)}">${st === 'completed' ? '✓' : '⚡'} ${esc(farmTitle(f))}</a>`).join('');
+
+  const regionRows = regions.map(r => {
+    const fs = live.filter(f => (f.region || '—') === r);
+    return `<tr><td><strong>${esc(r)}</strong></td><td class="num">${fs.length}</td>
+      <td class="num"><strong>${count(fs, 'completed')}</strong></td><td class="num"><strong>${count(fs, 'no_power')}</strong></td>
+      <td class="num">${count(fs, 'in_progress')}</td><td class="num">${count(fs, 'not_started')}</td><td class="num">${avgOf(fs)}%</td></tr>`;
+  }).join('') + `<tr class="total"><td><strong>${esc(t('total'))}</strong></td><td class="num">${live.length}</td>
+      <td class="num"><strong>${count(live, 'completed')}</strong></td><td class="num"><strong>${count(live, 'no_power')}</strong></td>
+      <td class="num">${count(live, 'in_progress')}</td><td class="num">${count(live, 'not_started')}</td><td class="num">${avgOf(live)}%</td></tr>`;
+
   const card = f => {
-    const p = farmProgress(f);
+    const st = completion(f), p = farmProgress(f);
     const approved = state.photos.filter(ph => ph.farmId === f.id && ph.approved).length;
-    return `<a class="card flat stack" href="#/client/farm/${f.id}" style="text-decoration:none;color:inherit">
-      <div class="row between"><strong>${esc(farmTitle(f))}</strong><span class="small muted">${esc(f.region)}</span><span>${p}%</span></div>${progressBar(p)}
-      ${approved ? `<span class="small muted">${approved} ${esc(t('photos_n'))}</span>` : ''}</a>`;
+    return `<a class="card flat stack farmcard ${st}" href="#/client/farm/${esc(f.id)}" style="text-decoration:none;color:inherit;gap:8px">
+      <strong class="fname">${esc(farmTitle(f))}</strong>
+      <div class="pline">${st === 'cancelled' ? '' : `${progressBar(p)}<span class="strong">${p}%</span>`}</div>
+      <div class="row between">${tagFor(st)}${approved ? `<span class="small muted">${approved} ${esc(t('photos'))}</span>` : ''}</div></a>`;
   };
+  const regionBlock = r => {
+    const fs = all.filter(f => (f.region || '—') === r), lv = fs.filter(f => f.status !== 'cancelled');
+    return `<section class="stack">
+      <div class="row between"><h2 class="h2">${esc(r)} <span class="muted small">· ${lv.length} ${esc(t('farms').toLowerCase())}</span></h2>
+        <span class="row small"><span class="tag ok">✓ ${count(lv, 'completed')} ${esc(t('completed'))}</span><span class="tag blue">⚡ ${count(lv, 'no_power')} ${esc(t('done_no_power'))}</span><span class="tag">${avgOf(lv)}%</span></span></div>
+      <div class="farmgrid">${fs.map(card).join('')}</div></section>`;
+  };
+
   return {
     html: `<div class="screen wide">${topbar()}<main class="content">
       ${isMgr(me()) ? mgrNav('client') : ''}
       <div class="eyebrow">${esc(t('client_portal'))} · ${esc(state.project.name.toUpperCase())} · ${esc(state.project.country.toUpperCase())}</div>
-      <div class="grid c3">
-        <div class="kpi" style="background:#fff"><span class="v">${avg}%</span><span>${esc(t('project_progress'))}</span></div>
-        <div class="kpi" style="background:#fff"><span class="v">${done}</span><span>${esc(t('completed'))}</span></div>
-        <div class="kpi" style="background:#fff"><span class="v">${inProg.length}</span><span>${esc(t('in_progress'))}</span></div>
+      <div class="grid c4">
+        ${kpi(avgOf(live) + '%', t('project_progress'))}
+        ${kpi(count(live, 'completed'), t('completed'), 'done')}
+        ${kpi(count(live, 'no_power'), t('done_no_power'), 'nopower')}
+        ${kpi(count(live, 'in_progress'), t('in_progress'))}
       </div>
-      <div class="eyebrow">${esc(t('in_progress'))}</div>
-      <div class="grid c3">${inProg.map(card).join('')}</div>
+      ${count(live, 'completed') + count(live, 'no_power') ? `<div class="card flat stack">
+        ${count(live, 'completed') ? `<div class="eyebrow">✓ ${esc(t('completed'))}</div><div>${chips('completed')}</div>` : ''}
+        ${count(live, 'no_power') ? `<div class="eyebrow">⚡ ${esc(t('done_no_power'))}</div><div>${chips('no_power')}</div>` : ''}</div>` : ''}
+      <div class="card stack"><h2 class="h3">${esc(t('by_region'))}</h2><div class="tbl-wrap"><table class="tbl">
+        <thead><tr><th>${esc(t('region'))}</th><th class="num">${esc(t('farms'))}</th><th class="num">${esc(t('completed'))}</th><th class="num">${esc(t('done_no_power'))}</th>
+          <th class="num">${esc(t('in_progress'))}</th><th class="num">${esc(t('not_started'))}</th><th class="num">${esc(t('progress'))}</th></tr></thead>
+        <tbody>${regionRows}</tbody></table></div>
+        <div class="small muted">${esc(t('no_power_hint'))}</div></div>
+      ${regions.map(regionBlock).join('')}
       <div class="small muted">${esc(t('only_approved'))}</div>
     </main></div>`,
   };
@@ -49,7 +86,7 @@ export function clientFarmView({ farmId }) {
     html: `<div class="screen wide">${topbar({ back: '#/client' })}<main class="content">
       <div class="eyebrow">${esc(t('client_portal'))}</div>
       <h1 class="h1">${esc(farmTitle(f))}</h1>
-      <div class="stack" style="gap:6px"><div class="strong">${p}% ${esc(t('in_progress'))}</div>${progressBar(p)}</div>
+      <div class="stack" style="gap:6px"><div class="row"><span class="strong">${p}% ${esc(t('in_progress'))}</span>${tagFor(completion(f))}</div>${progressBar(p)}</div>
       <div class="card flat stack"><div class="eyebrow">${esc(t('stage_status'))}</div><div>${stageRows}</div></div>
       ${photos.length ? `<div class="photos" style="grid-template-columns:repeat(auto-fill,minmax(220px,1fr))">${photos.map(ph => `<div class="ph">
         <button class="imgbtn" data-zoom="${ph.id}">${photoImg(ph.id)}</button>

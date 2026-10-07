@@ -1,5 +1,5 @@
 // Service worker: offline app shell, push reminders, and automatic upload of reports queued offline.
-const CACHE = 'gazi-field-v0.5.5';
+const CACHE = 'gazi-field-v0.6.0';
 const SHELL = [
   './', './index.html', './manifest.webmanifest', './css/app.css',
   './js/app.js', './js/i18n.js', './js/db.js', './js/data.js', './js/store.js', './js/ui.js',
