@@ -2,7 +2,7 @@
 import { t, getLang, LANGS } from './i18n.js';
 import { STAGES, farmProgress } from './data.js';
 import { state, me, farm, user, team, issue, reportIssues, isMgr as isMgrUser, photoMeta, setPhotoApproved, resolveIssue, saveBoq, saveStages, setDrawing, setFarmTeam, saveFarmInfo, setFarmStatus } from './store.js';
-import { esc, stageName, ICONS, topbar, toast, fail, photoImg, hydratePhotos, pct, timeLabel, progressBar, pickPhoto, parseGps, farmTitle } from './ui.js';
+import { esc, stageName, ICONS, topbar, toast, fail, photoImg, hydratePhotos, pct, timeLabel, progressBar, pickPhoto, parseGps, farmTitle, videoEl } from './ui.js';
 
 const isMgr = () => isMgrUser(me());
 const homeHref = () => (isMgr() ? '#/manage' : '#/');
@@ -221,8 +221,8 @@ function boqPage(f) {
 export function photoGrid(photos, { approve = false } = {}) {
   if (!photos.length) return `<div class="empty">${esc(t('no_photos'))}</div>`;
   return `<div class="photos">${photos.map(p => `<div class="ph">
-    <button class="imgbtn" data-zoom="${p.id}">${photoImg(p.id, p.label)}</button>
-    <div class="strong">${p.progress != null ? p.progress + '%' : esc(p.kind === 'issue' ? t('issues') : '')} <span class="muted" style="font-weight:400">${esc(stageName(p.stage))}</span></div>
+    ${p.kind === 'video' ? videoEl(p.id) : `<button class="imgbtn" data-zoom="${p.id}">${photoImg(p.id, p.label)}</button>`}
+    <div class="strong">${p.kind === 'video' ? `🎬 ${esc(t('video'))}` : p.progress != null ? p.progress + '%' : esc(p.kind === 'issue' ? t('issues') : '')} <span class="muted" style="font-weight:400">${esc(stageName(p.stage))}</span></div>
     <div class="muted" style="font-size:11px">${esc(p.label)}</div>
     ${approve ? `<label class="row small" style="gap:6px"><input type="checkbox" data-approve="${p.id}" ${p.approved ? 'checked' : ''}> ${esc(t('approve_client'))}</label>`
       : p.approved ? `<span class="tag ok">${esc(t('approved'))}</span>` : ''}
@@ -266,6 +266,7 @@ export function issueCard(i, { manage = false } = {}) {
     ${i.note ? `<p class="note-quote" dir="auto">“${esc(i.note)}”</p>` : ''}
     <div class="row small muted"><span>${esc(t('original', { l: LANGS[i.lang] || i.lang }))}</span>${tr}</div>
     ${i.photoId ? `<button class="imgbtn" data-zoom="${i.photoId}" style="border:0;padding:0;background:none;max-width:220px">${photoImg(i.photoId).replace('<img', '<img class="photo-preview"')}</button>` : ''}
+    ${state.photos.filter(p => p.kind === 'video' && p.issueId === i.id).map(p => `<div class="vidrow">${videoEl(p.id)}</div>`).join('')}
     <div class="small muted">${esc(t('reported_by', { n: user(i.reportedBy)?.name || '—', t: timeLabel(i.at) }))}</div>
     ${manage && i.status === 'open' ? `<button class="btn sm" data-resolve="${i.id}">${esc(t('resolve'))}</button>` : ''}
   </div>`;
@@ -296,7 +297,7 @@ export function reportView({ reportId }) {
     return `<tr><td>${esc(stageName(i.stage))}</td><td class="num">${val}</td><td>${esc(note)}</td></tr>`;
   }).join('');
   const photoIds = [...r.items.map(i => i.photoId), ...issues.map(i => i.photoId)].filter(Boolean);
-  const photos = photoIds.map(photoMeta).filter(Boolean);
+  const photos = [...photoIds.map(photoMeta).filter(Boolean), ...state.photos.filter(p => p.kind === 'video' && p.reportId === r.id)];
   const loc = r.location;
   const locLine = !loc ? t('location_unavailable') : loc.verified ? t('location_verified') : loc.distKm != null ? t('location_far', { km: loc.distKm.toFixed(1) }) : t('location_unavailable');
 

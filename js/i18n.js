@@ -297,6 +297,7 @@ Object.assign(S.ar, {
 Object.assign(S.en, {
   workers_reported_today: 'workers reported today', farms_updated_today: 'farms updated today', open_problems_total: 'open problems need attention', on_these_farms: 'On these farms:', open_problems: 'Open problems', no_open_problems: 'No open problems', workers_today: 'Workers today', reports_today: 'Reports from today', problem: 'Problem',
   done_no_power: 'Completed without electricity', by_region: 'By region', total: 'Total', report_with_photos: 'Daily report with photos', no_power_hint: 'Completed without electricity = every stage ready except electricity & generator and handover.',
+  leaders_today: 'Team leaders today', leaders_reported_today: 'team leaders reported today', videos: 'Videos', video: 'Video', record_video: 'Record video', choose_video: 'Choose video', video_limit: 'max {mb} MB', video_too_big: 'This video is too big (max {mb} MB, about 30–60 seconds). Record a shorter one.',
   daily_report: 'Daily report', daily_report_hint: 'Choose the farm and report today\'s work',
   st_concrete_floor: 'Concrete floor', st_room_structure: 'Room structure', st_excavation: 'Excavation',
   st_room_irrigation: 'Room irrigation system', st_drip_sprinklers: 'Drip & sprinklers', st_main_line: 'Main line',
@@ -317,6 +318,7 @@ Object.assign(S.en, {
 Object.assign(S.pt, {
   workers_reported_today: 'trabalhadores reportaram hoje', farms_updated_today: 'fazendas atualizadas hoje', open_problems_total: 'problemas abertos precisam de atenção', on_these_farms: 'Nestas fazendas:', open_problems: 'Problemas abertos', no_open_problems: 'Sem problemas abertos', workers_today: 'Trabalhadores hoje', reports_today: 'Relatórios de hoje', problem: 'Problema',
   done_no_power: 'Concluída sem eletricidade', by_region: 'Por província', total: 'Total', report_with_photos: 'Relatório diário com fotos', no_power_hint: 'Concluída sem eletricidade = todas as etapas prontas exceto eletricidade e gerador e entrega.',
+  leaders_today: 'Chefes de equipa hoje', leaders_reported_today: 'chefes de equipa reportaram hoje', videos: 'Vídeos', video: 'Vídeo', record_video: 'Gravar vídeo', choose_video: 'Escolher vídeo', video_limit: 'máx. {mb} MB', video_too_big: 'Este vídeo é grande demais (máx. {mb} MB, cerca de 30–60 segundos). Grave um mais curto.',
   daily_report: 'Relatório diário', daily_report_hint: 'Escolha a fazenda e reporte o trabalho de hoje',
   st_concrete_floor: 'Piso de concreto', st_room_structure: 'Estrutura da sala', st_excavation: 'Escavação',
   st_room_irrigation: 'Sala de sistema de irrigação', st_drip_sprinklers: 'Gota a gota e aspersores', st_main_line: 'Linha principal',
@@ -337,6 +339,7 @@ Object.assign(S.pt, {
 Object.assign(S.ar, {
   workers_reported_today: 'عمال أرسلوا اليوم', farms_updated_today: 'مزارع حُدّثت اليوم', open_problems_total: 'مشاكل مفتوحة تحتاج انتباه', on_these_farms: 'في هذه المزارع:', open_problems: 'المشاكل المفتوحة', no_open_problems: 'لا توجد مشاكل مفتوحة', workers_today: 'العمال اليوم', reports_today: 'تقارير اليوم', problem: 'المشكلة',
   done_no_power: 'مكتملة بدون كهرباء', by_region: 'حسب المنطقة', total: 'المجموع', report_with_photos: 'تقرير يومي مع صور', no_power_hint: 'مكتملة بدون كهرباء = كل المراحل جاهزة ما عدا الكهرباء والمولد والتسليم.',
+  leaders_today: 'رؤساء الفرق اليوم', leaders_reported_today: 'رؤساء فرق أرسلوا اليوم', videos: 'فيديوهات', video: 'فيديو', record_video: 'تصوير فيديو', choose_video: 'اختيار فيديو', video_limit: 'حتى {mb} ميغابايت', video_too_big: 'الفيديو كبير جدًا (الحد {mb} ميغابايت، حوالي 30–60 ثانية). صوّر فيديو أقصر.',
   daily_report: 'التقرير اليومي', daily_report_hint: 'اختر المزرعة وأبلغ عن عمل اليوم',
   st_concrete_floor: 'الأرضية الخرسانية', st_room_structure: 'هيكل الغرفة', st_excavation: 'الحفر',
   st_room_irrigation: 'نظام ري الغرفة', st_drip_sprinklers: 'التنقيط والرشاشات', st_main_line: 'الخط الرئيسي',

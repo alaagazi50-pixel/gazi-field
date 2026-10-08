@@ -104,6 +104,14 @@ check("worker uploads photo for another team's farm", raises('jamal', ins, (p4, 
 check('worker cannot upload as someone else', raises('jamal', ins, (p2, 'HM16', f'HM16/{p2}.jpg', U['paulo'])) is not None)
 check('worker cannot self-approve photo', raises('jamal', "insert into photos (id, farm_id, kind, label, path, taken_at, user_id, approved) values (%s,'HM16','progress','L','x', now(), %s, true)", (p2, U['jamal'])) is not None)
 check('client cannot upload photos', raises('client', ins, (p2, 'HM16', f'HM16/{p2}.jpg', U['client'])) is not None)
+vid, rep_link = str(uuid.uuid4()), str(uuid.uuid4())
+check('worker uploads a video linked to a report',
+      raises('jamal', "insert into photos (id, farm_id, kind, label, path, taken_at, user_id, report_id) values (%s,'HM16','video','HM16 · VIDEO',%s, now(), %s, %s)",
+             (vid, f'HM16/{vid}.mp4', U['jamal'], rep_link)) is None
+      and str(ex("select report_id from photos where id = %s", (vid,)).fetchone()[0]) == rep_link)
+check('unknown media kinds are still refused',
+      raises('jamal', "insert into photos (id, farm_id, kind, label, path, taken_at, user_id) values (%s,'HM16','audio','x','x', now(), %s)", (str(uuid.uuid4()), U['jamal'])) is not None)
+check('client sees an approved video only', not as_('client', "select id from photos where id = %s", (vid,)))
 check('storage: worker uploads to any farm folder',
       raises('jamal', "insert into storage.objects (bucket_id, name) values ('photos', %s)", (f'HM16/{p1}.jpg',)) is None
       and raises('jamal', "insert into storage.objects (bucket_id, name) values ('photos', 'BI07/x.jpg')") is None)

@@ -60,8 +60,12 @@ export function toast(msg) {
 export function photoImg(id, alt = '') {
   return id ? `<img data-photo="${esc(id)}" alt="${esc(alt)}">` : `<div class="noimg">—</div>`;
 }
+// <video data-photo="id"> plays the clip (from the phone if not uploaded yet, streamed from the server otherwise).
+export function videoEl(id) {
+  return `<video data-photo="${esc(id)}" controls playsinline preload="metadata" class="video"></video>`;
+}
 export async function hydratePhotos(root = document) {
-  for (const img of root.querySelectorAll('img[data-photo]')) {
+  for (const img of root.querySelectorAll('img[data-photo], video[data-photo]')) {
     const url = await photoURL(img.dataset.photo);
     if (url) img.src = url;
   }
@@ -101,11 +105,12 @@ export function getPosition(timeout = 12000) {
 }
 
 // Hidden file input: capture=environment opens the rear camera on phones.
-export function pickPhoto(capture) {
+export const pickVideo = capture => pickPhoto(capture, 'video/*');
+export function pickPhoto(capture, accept = 'image/*') {
   return new Promise(resolve => {
     const inp = document.createElement('input');
     inp.type = 'file';
-    inp.accept = 'image/*';
+    inp.accept = accept;
     if (capture) inp.capture = 'environment';
     inp.onchange = () => resolve(inp.files[0] || null);
     inp.click();

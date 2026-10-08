@@ -76,7 +76,7 @@ export async function dashboardView() {
       <div class="card stack" style="gap:16px">
         <div class="eyebrow">GAZI FIELD · ${esc(state.project.name.toUpperCase())} · ${esc(niceDate(Date.now(), getLang()).toUpperCase())}</div>
         <div class="grid c2">
-          <div class="kpi center"><span class="v">${workersReported} / ${workers.length}</span><span>${esc(t('workers_reported_today'))}</span></div>
+          <div class="kpi center"><span class="v">${workersReported} / ${workers.length}</span><span>${esc(t('leaders_reported_today'))}</span></div>
           <div class="kpi center"><span class="v">${farmsUpdated}</span><span>${esc(t('farms_updated_today'))}</span></div>
         </div>
         <div class="attn ${openIssues.length ? 'hot' : ''}">
@@ -88,7 +88,7 @@ export async function dashboardView() {
       ${section(t('open_problems'), problemRows
         ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>${esc(t('farm'))}</th><th>${esc(t('problem'))}</th><th>${esc(t('reported'))}</th><th></th></tr></thead><tbody>${problemRows}</tbody></table></div>`
         : `<div class="empty">${esc(t('no_open_problems'))}</div>`)}
-      ${section(t('workers_today'), workers.length
+      ${section(t('leaders_today'), workers.length
         ? `<div class="tbl-wrap"><table class="tbl"><tbody>${workerRows}</tbody></table></div>` : `<div class="empty">—</div>`)}
       ${section(t('reports_today'), reportRows
         ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>${esc(t('farm'))}</th><th>${esc(t('update'))}</th><th>${esc(t('reported'))}</th><th></th></tr></thead><tbody>${reportRows}</tbody></table></div>`

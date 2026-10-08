@@ -1,9 +1,9 @@
 // Field worker screens: choose a farm, the farm screen, and the daily update flow.
 import { t, getLang } from './i18n.js';
 import { STAGES, CATEGORIES, STEP, LOCATION_RADIUS_KM, dateKey, hhmm, farmProgress, distanceKm } from './data.js';
-import { state, save, me, farm, team, reportFor, reportIssues, savePhoto, photoMeta, queueReport, queueIssue, newId, dismissFailed,
+import { state, save, me, farm, team, reportFor, reportIssues, savePhoto, saveVideo, discardVideo, VIDEO_MAX_MB, photoMeta, queueReport, queueIssue, newId, dismissFailed,
   rememberFarm, activeFarms } from './store.js';
-import { esc, stageName, ICONS, topbar, photoImg, hydratePhotos, pct, getPosition, pickPhoto, progressBar, farmTitle, toast, fail } from './ui.js';
+import { esc, stageName, ICONS, topbar, photoImg, hydratePhotos, pct, getPosition, pickPhoto, progressBar, farmTitle, toast, fail, pickVideo, videoEl } from './ui.js';
 
 const go = h => { location.hash = h; };
 let nearPos = null;        // set by "Near me": farms are then sorted by distance (GPS works without signal)
@@ -307,6 +307,7 @@ export function updateView({ farmId }) {
         <button class="linkbtn" data-act="editissues" style="align-self:flex-start">${esc(d.issues.length ? t('edit_problems') : t('report_issue'))}</button>
         <div><div class="strong">${d.items.filter(i => i.action).length} / ${n} ${esc(t('reviewed'))} · ${photoCount} ${esc(photoCount === 1 ? t('photo_1') : t('photos_n'))}</div>
           <div style="${loc && !loc.verified ? 'color:var(--red)' : ''}">${esc(locLine)}</div></div>
+        ${videoSection(d.videoIds)}
         <span class="spacer"></span>
         <button class="btn" data-act="submit">${esc(t('submit_day'))}</button>`;
       break;
@@ -375,6 +376,7 @@ export function updateView({ farmId }) {
       on('submit', () => submit(f, u, d));
 
       if (d.step === 'summary') {
+        bindVideos(root, d, () => ({ farmId: f.id, stage: null, loc: d.location && !d.location.error ? { lat: d.location.lat, lng: d.location.lng } : null }), commit);
         if (!d.location) {
           getPosition().then(p => {
             d.location = p
@@ -389,6 +391,33 @@ export function updateView({ farmId }) {
   };
 }
 
+// Optional videos (daily report and urgent problem): record or choose, preview, remove.
+const videoSection = ids => `<div class="eyebrow">🎬 ${esc(t('videos'))} <span class="muted">(${esc(t('optional'))} · ${esc(t('video_limit', { mb: VIDEO_MAX_MB }))})</span></div>
+  ${(ids || []).map(id => `<div class="vidrow">${videoEl(id)}<button class="linkbtn" data-rmvideo="${esc(id)}">${esc(t('remove'))}</button></div>`).join('')}
+  <div class="btn-row"><button class="btn ghost sm" data-act="vcamera" style="width:100%">🎬 ${esc(t('record_video'))}</button>
+    <button class="btn ghost sm" data-act="vgallery" style="width:100%">${esc(t('choose_video'))}</button></div>`;
+function bindVideos(root, d, meta, commit) {
+  const add = async useCamera => {
+    const file = await pickVideo(useCamera);
+    if (!file) return;
+    try {
+      const rec = await saveVideo(file, meta());
+      (d.videoIds ||= []).push(rec.id);
+      commit();
+    } catch (err) {
+      if (err.message === 'video_too_big') toast(t('video_too_big', { mb: VIDEO_MAX_MB }));
+      else fail(err);
+    }
+  };
+  root.querySelectorAll('[data-act=vcamera]').forEach(b => { b.onclick = () => add(true); });
+  root.querySelectorAll('[data-act=vgallery]').forEach(b => { b.onclick = () => add(false); });
+  root.querySelectorAll('[data-rmvideo]').forEach(b => b.onclick = async () => {
+    d.videoIds = (d.videoIds || []).filter(x => x !== b.dataset.rmvideo);
+    await discardVideo(b.dataset.rmvideo);
+    commit();
+  });
+}
+
 async function submit(f, u, d) {
   if (d.items.some(i => !i.action)) { d.step = 'stage'; d.idx = d.items.findIndex(i => !i.action); await save(); window.dispatchEvent(new Event('rerender')); return; }
   const now = Date.now();
@@ -401,7 +430,7 @@ async function submit(f, u, d) {
   const lang = getLang();
   const issues = d.issues.map(i => ({ stage: i.stage, category: i.category, note: i.note, photoId: i.photoId, lang }));
   delete state.drafts[d.key];
-  await queueReport(report, issues);
+  await queueReport(report, issues, d.videoIds || []);
   location.hash = `#/done/${report.id}`;
 }
 
@@ -459,8 +488,9 @@ export function problemView({ farmId }) {
       ${d.photoId ? `<button data-zoom="${d.photoId}" style="border:0;padding:0;background:none">${photoImg(d.photoId).replace('<img', '<img class="photo-preview"')}</button>` : ''}
       <div class="btn-row"><button class="btn ghost sm" data-act="camera" style="width:100%">${ICONS.camera} ${esc(t('take_photo'))}</button>
         <button class="btn ghost sm" data-act="gallery" style="width:100%">${esc(t('choose_from_phone'))}</button></div>
+      ${videoSection(d.videoIds)}
       <textarea class="input" id="problem-note" data-note placeholder="${esc(t('describe'))}">${esc(d.note)}</textarea>
-      <button class="btn warn" data-act="send" ${d.category && (d.note.trim() || d.photoId) ? '' : 'disabled'}>${esc(t('urgent_send'))}</button>`;
+      <button class="btn warn" data-act="send" ${d.category && (d.note.trim() || d.photoId || d.videoIds?.length) ? '' : 'disabled'}>${esc(t('urgent_send'))}</button>`;
   }
   return {
     html: `<div class="screen">${topbar({ back: farmId ? `#/work/${farmId}` : '#/' })}<main class="content">${body}</main></div>`,
@@ -478,7 +508,7 @@ export function problemView({ farmId }) {
       const note = root.querySelector('[data-note]');
       if (note) note.oninput = () => {
         d.note = note.value;
-        root.querySelector('[data-act=send]').disabled = !(d.category && (d.note.trim() || d.photoId));
+        root.querySelector('[data-act=send]').disabled = !(d.category && (d.note.trim() || d.photoId || d.videoIds?.length));
         save();
       };
       const capture = async useCamera => {
@@ -491,9 +521,10 @@ export function problemView({ farmId }) {
       };
       on('camera', () => capture(true));
       on('gallery', () => capture(false));
+      if (d.farmId) bindVideos(root, d, () => ({ farmId: d.farmId, stage: d.stage }), commit);
       on('send', async () => {
         const online = navigator.onLine;
-        await queueIssue(d.farmId, { category: d.category, stage: d.stage, note: d.note.trim(), photoId: d.photoId, lang: getLang() });
+        await queueIssue(d.farmId, { category: d.category, stage: d.stage, note: d.note.trim(), photoId: d.photoId, lang: getLang() }, d.videoIds || []);
         delete state.drafts.__problem;
         await save();
         toast(online ? t('urgent_sent') : t('urgent_queued'));

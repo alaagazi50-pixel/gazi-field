@@ -11,7 +11,7 @@ import { peopleView } from './people.js';
 import { analysisView } from './analysis.js';
 import { clientView, clientFarmView } from './client.js';
 
-export const APP_VERSION = '0.6.0';
+export const APP_VERSION = '0.6.1';
 
 // [path, view, roles allowed]. Roles: field (worker), manager, client.
 const ROUTES = [

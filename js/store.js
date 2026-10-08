@@ -5,7 +5,7 @@
 // when the phone has internet (by the page, or by the service worker when the app is closed).
 import { SUPABASE_URL, SUPABASE_ANON_KEY, USERNAME_DOMAIN, ADMIN_FUNCTION, REMINDER_FUNCTION, VAPID_PUBLIC_KEY } from './config.js';
 import { kvGet, kvSet, kvDel, putPhoto, getPhoto } from './db.js';
-import { photoLabel } from './data.js';
+import { photoLabel, shortDate } from './data.js';
 
 export const configured = !!(SUPABASE_URL && SUPABASE_ANON_KEY && window.supabase);
 
@@ -52,7 +52,7 @@ const mapProfile = p => ({ id: p.id, name: p.full_name, username: p.username, ro
 const mapFarm = f => ({ id: f.id, name: f.name || '', region: f.region, gps: { lat: f.lat ?? 0, lng: f.lng ?? 0 }, teamId: f.team_id, stages: f.stages || {}, boq: f.boq || [], drawingPhotoId: f.drawing_photo_id, details: f.details || {}, status: f.status || 'active' });
 const mapReport = r => ({ id: r.id, farmId: r.farm_id, teamId: r.team_id, userId: r.user_id, date: r.date, submittedAt: ms(r.submitted_at), issueId: r.issue_id, items: r.items, location: r.location, connectivity: r.connectivity });
 const mapIssue = i => ({ id: i.id, farmId: i.farm_id, reportId: i.report_id ?? null, urgent: !!i.urgent, stage: i.stage, category: i.category, note: i.note, lang: i.lang, photoId: i.photo_id, reportedBy: i.reported_by, teamId: i.team_id, at: ms(i.at), status: i.status, resolvedAt: ms(i.resolved_at) });
-const mapPhoto = p => ({ id: p.id, label: p.label, takenAt: ms(p.taken_at), farmId: p.farm_id, stage: p.stage, progress: p.progress, kind: p.kind, userId: p.user_id, teamId: p.team_id, loc: p.loc, approved: p.approved, path: p.path });
+const mapPhoto = p => ({ id: p.id, reportId: p.report_id ?? null, issueId: p.issue_id ?? null, label: p.label, takenAt: ms(p.taken_at), farmId: p.farm_id, stage: p.stage, progress: p.progress, kind: p.kind, userId: p.user_id, teamId: p.team_id, loc: p.loc, approved: p.approved, path: p.path });
 const mapTeam = t => ({ id: t.id, name: t.name, todayFarm: t.today_farm_id });
 
 // ---------- persistence of the local copy ----------
@@ -206,7 +206,10 @@ export const reportIssues = r => {
   return list.length ? list : (r.issueId && issue(r.issueId) ? [issue(r.issueId)] : []);
 };
 export const photoMeta = id => state.photos.find(p => p.id === id);
-export const pendingCount = () => state.outbox.filter(o => !o.error).length + (state.issueOutbox || []).filter(o => !o.error).length;
+export const pendingCount = () => state.outbox.filter(o => !o.error).length + (state.issueOutbox || []).filter(o => !o.error).length
+  + state.pendingPhotos.filter(readyVideo).length;
+// A video waits on the phone until the report or problem it belongs to has been sent.
+const readyVideo = p => p.kind === 'video' && !p.error && !!(p.reportId || p.issueId);
 
 // Farms this worker opened recently, most recent first (for the farm chooser).
 export async function rememberFarm(farmId) {
@@ -222,6 +225,12 @@ export async function photoURL(id) {
   if (!rec) {
     const meta = photoMeta(id);
     if (!meta?.path || !configured) return null;
+    if (meta.kind === 'video') {
+      const { data, error } = await sb.storage.from('photos').createSignedUrl(meta.path, 6 * 3600);
+      if (error || !data?.signedUrl) return null;
+      urlCache.set(id, data.signedUrl);
+      return data.signedUrl;
+    }
     const { data, error } = await sb.storage.from('photos').download(meta.path);
     if (error) return null;
     rec = { id, blob: data };
@@ -294,14 +303,44 @@ export async function savePhoto(file, meta) {
   return rec;
 }
 
+// Videos are kept as recorded (phones can't re-compress video in the browser), so they are capped at 50 MB:
+// the largest file the storage accepts. Roughly 30–60 seconds, depending on the phone's camera setting.
+export const VIDEO_MAX_MB = 50;
+export async function saveVideo(file, meta) {
+  if (file.size > VIDEO_MAX_MB * 1024 * 1024) throw new Error('video_too_big');
+  const type = file.type || 'video/mp4';
+  const ext = (/quicktime/.test(type) ? 'mov' : type.split('/')[1] || 'mp4').replace(/[^a-z0-9]/g, '').slice(0, 5) || 'mp4';
+  const id = newId(), takenAt = Date.now();
+  await putPhoto({ id, blob: file });
+  const rec = {
+    id, label: `${meta.farmId} · VIDEO · ${shortDate(takenAt)}`, takenAt, farmId: meta.farmId, stage: meta.stage ?? null, progress: null, kind: 'video',
+    userId: state.me.id, teamId: state.me.teamId ?? null, loc: meta.loc ?? null, approved: false, path: `${meta.farmId}/${id}.${ext}`,
+    contentType: type, reportId: null, issueId: null,
+  };
+  state.pendingPhotos.push(rec);
+  state.photos.push({ ...rec, pending: true });
+  await save();
+  return rec;
+}
+// A video taken for a draft and then removed: forget it so it is never uploaded.
+export async function discardVideo(id) {
+  state.pendingPhotos = state.pendingPhotos.filter(p => p.id !== id);
+  state.photos = state.photos.filter(p => p.id !== id || !p.pending);
+  await save();
+}
+function attachVideos(ids, link) {
+  for (const id of ids || []) for (const p of [...state.pendingPhotos, ...state.photos]) if (p.id === id) Object.assign(p, link);
+}
+
 async function uploadPhoto(rec) {
   const stored = await getPhoto(rec.id);
   if (!stored) throw new Error('Photo file missing on this phone');
-  const up = await sb.storage.from('photos').upload(rec.path, stored.blob, { contentType: 'image/jpeg', upsert: false });
+  const up = await sb.storage.from('photos').upload(rec.path, stored.blob, { contentType: rec.contentType || 'image/jpeg', upsert: false });
   if (up.error && !/exists|duplicate/i.test(up.error.message)) throw up.error;
   const { error } = await sb.from('photos').insert({
     id: rec.id, farm_id: rec.farmId, stage: rec.stage === 'drawing' ? null : rec.stage, progress: rec.progress, kind: rec.kind,
     label: rec.label, path: rec.path, taken_at: new Date(rec.takenAt).toISOString(), user_id: rec.userId, team_id: rec.teamId, loc: rec.loc,
+    ...(rec.kind === 'video' ? { report_id: rec.reportId, issue_id: rec.issueId } : {}),
   });
   if (error && error.code !== '23505') throw error;
   state.pendingPhotos = state.pendingPhotos.filter(p => p.id !== rec.id);
@@ -321,7 +360,8 @@ function viaImg(file) {
 }
 
 // ---------- field: daily report outbox ----------
-export async function queueReport(report, issues) {
+export async function queueReport(report, issues, videoIds = []) {
+  attachVideos(videoIds, { reportId: report.id });
   const photoIds = [...report.items.map(i => i.photoId), ...issues.map(i => i.photoId)].filter(Boolean);
   state.outbox.push({ id: report.id, report, issues, photoIds, queuedAt: Date.now() });
   await rememberFarm(report.farmId);
@@ -332,8 +372,9 @@ export async function queueReport(report, issues) {
 }
 
 // A problem reported straight away (urgent), without a daily report. Queued like reports when offline.
-export async function queueIssue(farmId, issue) {
+export async function queueIssue(farmId, issue, videoIds = []) {
   const id = newId();
+  attachVideos(videoIds, { issueId: id });
   state.issueOutbox.push({ id, farmId, issue: { ...issue, urgent: true }, photoIds: [issue.photoId].filter(Boolean), queuedAt: Date.now() });
   await rememberFarm(farmId);
   overlayLocal();
@@ -395,7 +436,7 @@ export async function sync() {
         p_location: r.location, p_connectivity: r.connectivity, p_submitted_at: new Date(r.submittedAt).toISOString(),
       });
       if (error) {
-        if (/ALREADY_SUBMITTED|Only field workers|Unknown farm|was not reviewed|Invalid progress|Photo missing/.test(error.message)) {
+        if (/ALREADY_SUBMITTED|Only field workers|Not allowed|Unknown farm|was not reviewed|Invalid progress|Photo missing/.test(error.message)) {
           o.error = error.message.replace('ALREADY_SUBMITTED: ', '');
           await save();
           continue;
@@ -403,6 +444,16 @@ export async function sync() {
         throw error;
       }
       state.outbox = state.outbox.filter(x => x.id !== o.id);
+      await save();
+    }
+    // Videos last, once their report or problem is in: a big file never holds up the report itself.
+    for (const p of state.pendingPhotos.filter(readyVideo)) {
+      if (state.outbox.some(o => o.id === p.reportId) || state.issueOutbox.some(o => o.id === p.issueId)) continue;
+      try { await uploadPhoto(p); }
+      catch (e) {
+        if (!/maximum allowed size|too large|413|mime|check constraint|violates|exceeded/i.test(`${e.message} ${e.statusCode || ''}`)) throw e;
+        p.error = e.message;   // can never succeed: stop retrying, keep the note
+      }
       await save();
     }
     state.syncError = null;
@@ -422,6 +473,7 @@ export async function dismissFailed(reportId) {
   state.issueOutbox = state.issueOutbox.filter(o => o.id !== reportId);
   state.reports = state.reports.filter(r => r.id !== reportId);
   state.issues = state.issues.filter(i => i.reportId !== reportId);
+  state.pendingPhotos = state.pendingPhotos.filter(p => p.reportId !== reportId && p.issueId !== reportId);
   await save();
   rerender();
 }

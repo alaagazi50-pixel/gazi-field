@@ -2,7 +2,7 @@
 import { t } from './i18n.js';
 import { STAGES, farmProgress, completion, byFarmCode, byRegion } from './data.js';
 import { state, me, farm, isMgr } from './store.js';
-import { esc, stageName, topbar, progressBar, hydratePhotos, photoImg, farmTitle } from './ui.js';
+import { esc, stageName, topbar, progressBar, hydratePhotos, photoImg, videoEl, farmTitle } from './ui.js';
 import { mgrNav } from './manage.js';
 
 const TAG = {
@@ -89,7 +89,7 @@ export function clientFarmView({ farmId }) {
       <div class="stack" style="gap:6px"><div class="row"><span class="strong">${p}% ${esc(t('in_progress'))}</span>${tagFor(completion(f))}</div>${progressBar(p)}</div>
       <div class="card flat stack"><div class="eyebrow">${esc(t('stage_status'))}</div><div>${stageRows}</div></div>
       ${photos.length ? `<div class="photos" style="grid-template-columns:repeat(auto-fill,minmax(220px,1fr))">${photos.map(ph => `<div class="ph">
-        <button class="imgbtn" data-zoom="${ph.id}">${photoImg(ph.id)}</button>
+        ${ph.kind === 'video' ? videoEl(ph.id) : `<button class="imgbtn" data-zoom="${ph.id}">${photoImg(ph.id)}</button>`}
         <div>${esc(stageName(ph.stage))}${ph.progress != null ? ` · ${ph.progress}%` : ''} · ${esc(t('approved'))}</div></div>`).join('')}</div>`
         : `<div class="empty">${esc(t('no_photos'))}</div>`}
     </main></div>`,
