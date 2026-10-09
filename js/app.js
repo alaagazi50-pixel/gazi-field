@@ -4,14 +4,14 @@ import { hhmm } from './data.js';
 import { state, configured, me, team, isMgr, restoreSession, signIn, signOut, refresh, sync, save, pendingCount, reloadLocal, pushState, enablePush, testPush } from './store.js';
 import { esc, topbar, toast } from './ui.js';
 import { storageLimited } from './db.js';
-import { homeView, chooseView, pickFarmView, workView, updateView, doneView, problemView } from './field.js';
+import { homeView, chooseView, pickFarmView, workView, updateView, doneView, problemView, generalView } from './field.js';
 import { farmHubView, farmSubView, reportView } from './farm.js';
 import { dashboardView, farmsListView } from './manage.js';
 import { peopleView } from './people.js';
 import { analysisView } from './analysis.js';
 import { clientView, clientFarmView } from './client.js';
 
-export const APP_VERSION = '0.6.1';
+export const APP_VERSION = '0.6.2';
 
 // [path, view, roles allowed]. Roles: field (worker), manager, client.
 const ROUTES = [
@@ -24,6 +24,7 @@ const ROUTES = [
   ['/work/:farmId', workView, ['field', 'manager', 'supervisor']],
   ['/problem', problemView, ['field', 'manager', 'supervisor']],
   ['/problem/:farmId', problemView, ['field', 'manager', 'supervisor']],
+  ['/general', generalView, ['field', 'manager', 'supervisor']],
   ['/report/:reportId', reportView, ['field', 'manager', 'supervisor']],
   ['/farm/:farmId', farmHubView, ['field', 'manager', 'supervisor']],
   ['/farm/:farmId/:sub', farmSubView, ['field', 'manager', 'supervisor']],

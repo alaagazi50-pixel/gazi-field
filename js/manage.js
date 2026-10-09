@@ -1,8 +1,8 @@
 // Management: "sees the day in seconds" dashboard and the farm list.
 import { t, getLang } from './i18n.js';
 import { STAGES, dateKey, hhmm, niceDate, farmProgress, farmStatus } from './data.js';
-import { state, me, user, team, teamFarm, farm, reportIssues, markFollowUp, remindTeam, refresh, addFarm, uploadDrawings, pushState, enablePush, testPush } from './store.js';
-import { esc, stageName, topbar, timeLabel, progressBar, fail, toast, parseGps, farmTitle } from './ui.js';
+import { state, me, user, team, teamFarm, farm, reportIssues, markFollowUp, remindTeam, refresh, addFarm, uploadDrawings, pushState, enablePush, testPush, resolveGeneral } from './store.js';
+import { esc, stageName, topbar, timeLabel, progressBar, fail, toast, parseGps, farmTitle, photoImg, videoEl, hydratePhotos } from './ui.js';
 
 export function mgrNav(active) {
   const a = (k, href, label) => `<a class="${active === k ? 'on' : ''}" href="${href}">${esc(label)}</a>`;
@@ -64,6 +64,17 @@ export async function dashboardView() {
       <td><a class="btn xs" href="#/report/${r.id}">${esc(t('review'))}</a></td></tr>`;
   }).join('');
 
+  const openGenerals = state.generals.filter(g => g.status === 'open' && !g.pending).sort((a, b) => b.at - a.at);
+  const generalCards = openGenerals.map(g => {
+    const vids = state.photos.filter(p => p.kind === 'video' && p.generalId === g.id);
+    const tr = `<a class="small" target="_blank" rel="noopener" href="https://translate.google.com/?sl=auto&tl=${getLang()}&op=translate&text=${encodeURIComponent(g.note)}">${esc(t('translate'))}</a>`;
+    return `<div class="card flat stack" style="gap:8px">
+      <div class="row between"><span class="small"><strong>${esc(user(g.userId)?.name || '—')}</strong>${g.teamId ? ` <span class="muted">(${esc(team(g.teamId).name)})</span>` : ''} · ${esc(timeLabel(g.at))}</span>
+        <button class="btn xs" data-general="${esc(g.id)}">${esc(t('mark_handled'))}</button></div>
+      <p class="note-quote" dir="auto" style="margin:0;white-space:pre-wrap">${esc(g.note)}</p>${tr}
+      ${g.photoId ? `<button class="imgbtn" data-zoom="${g.photoId}" style="border:0;padding:0;background:none;max-width:220px">${photoImg(g.photoId).replace('<img', '<img class="photo-preview"')}</button>` : ''}
+      ${vids.map(p => `<div class="vidrow">${videoEl(p.id)}</div>`).join('')}</div>`;
+  }).join('');
   const section = (title, body) => `<div class="card stack"><h2 class="h3">${esc(title)}</h2>${body}</div>`;
   return {
     html: `<div class="screen wide">${topbar()}<main class="content">
@@ -71,7 +82,7 @@ export async function dashboardView() {
         <button class="btn ghost xs" data-act="refresh">${esc(t('refresh'))}</button></span></div>
       ${state.syncError ? `<div class="card alert flat small">${esc(t('sync_failed'))}</div>` : ''}
       <h1 class="h1">${esc(t('dashboard'))}</h1>
-      <div class="row"><a class="btn sm" href="#/choose">＋ ${esc(t('daily_report'))}</a><a class="btn sm ghost" href="#/problem">⚠ ${esc(t('urgent_btn'))}</a></div>
+      <div class="row"><a class="btn sm" href="#/choose">＋ ${esc(t('daily_report'))}</a><a class="btn sm ghost" href="#/problem">⚠ ${esc(t('urgent_btn'))}</a><a class="btn sm ghost" href="#/general">📝 ${esc(t('general_report'))}</a></div>
       ${await alertsCard()}
       <div class="card stack" style="gap:16px">
         <div class="eyebrow">GAZI FIELD · ${esc(state.project.name.toUpperCase())} · ${esc(niceDate(Date.now(), getLang()).toUpperCase())}</div>
@@ -85,6 +96,7 @@ export async function dashboardView() {
           ${openIssues.length ? `<div class="small">${esc(t('on_these_farms'))}</div><div>${farmChips}</div>` : `<div class="small">${esc(t('no_open_problems'))}</div>`}
         </div>
       </div>
+      ${openGenerals.length ? section(`📝 ${t('general_reports')} · ${openGenerals.length}`, generalCards) : ''}
       ${section(t('open_problems'), problemRows
         ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>${esc(t('farm'))}</th><th>${esc(t('problem'))}</th><th>${esc(t('reported'))}</th><th></th></tr></thead><tbody>${problemRows}</tbody></table></div>`
         : `<div class="empty">${esc(t('no_open_problems'))}</div>`)}
@@ -95,6 +107,11 @@ export async function dashboardView() {
         : `<div class="empty">${esc(t('no_history'))}</div>`)}
     </main></div>`,
     mount(root) {
+      root.querySelectorAll('[data-general]').forEach(b => b.onclick = async () => {
+        b.disabled = true;
+        try { await resolveGeneral(b.dataset.general); toast(t('saved')); } catch (err) { b.disabled = false; fail(err); }
+      });
+      hydratePhotos(root);
       root.querySelectorAll('[data-follow]').forEach(b => b.onclick = async () => {
         try {
           await markFollowUp(b.dataset.follow, today);

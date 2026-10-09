@@ -6,6 +6,7 @@
 import { SUPABASE_URL, SUPABASE_ANON_KEY, USERNAME_DOMAIN, ADMIN_FUNCTION, REMINDER_FUNCTION, VAPID_PUBLIC_KEY } from './config.js';
 import { kvGet, kvSet, kvDel, putPhoto, getPhoto } from './db.js';
 import { photoLabel, shortDate } from './data.js';
+import { getLang } from './i18n.js';
 
 export const configured = !!(SUPABASE_URL && SUPABASE_ANON_KEY && window.supabase);
 
@@ -35,8 +36,8 @@ export const sb = configured
 if (configured) kvSet('cfg', { url: SUPABASE_URL, key: SUPABASE_ANON_KEY }).catch(() => {});
 
 const empty = () => ({
-  me: null, project: { name: 'GAZI FIELD', country: '' }, teams: [], users: [], farms: [], reports: [], issues: [], photos: [], followUps: {},
-  drafts: {}, farmPick: {}, recentFarms: [], outbox: [], issueOutbox: [], pendingPhotos: [], lastSync: null, syncError: null,
+  me: null, project: { name: 'GAZI FIELD', country: '' }, teams: [], users: [], farms: [], reports: [], issues: [], photos: [], followUps: {}, generals: [],
+  drafts: {}, farmPick: {}, recentFarms: [], outbox: [], issueOutbox: [], generalOutbox: [], pendingPhotos: [], lastSync: null, syncError: null,
 });
 export let state = empty();
 
@@ -52,7 +53,8 @@ const mapProfile = p => ({ id: p.id, name: p.full_name, username: p.username, ro
 const mapFarm = f => ({ id: f.id, name: f.name || '', region: f.region, gps: { lat: f.lat ?? 0, lng: f.lng ?? 0 }, teamId: f.team_id, stages: f.stages || {}, boq: f.boq || [], drawingPhotoId: f.drawing_photo_id, details: f.details || {}, status: f.status || 'active' });
 const mapReport = r => ({ id: r.id, farmId: r.farm_id, teamId: r.team_id, userId: r.user_id, date: r.date, submittedAt: ms(r.submitted_at), issueId: r.issue_id, items: r.items, location: r.location, connectivity: r.connectivity });
 const mapIssue = i => ({ id: i.id, farmId: i.farm_id, reportId: i.report_id ?? null, urgent: !!i.urgent, stage: i.stage, category: i.category, note: i.note, lang: i.lang, photoId: i.photo_id, reportedBy: i.reported_by, teamId: i.team_id, at: ms(i.at), status: i.status, resolvedAt: ms(i.resolved_at) });
-const mapPhoto = p => ({ id: p.id, reportId: p.report_id ?? null, issueId: p.issue_id ?? null, label: p.label, takenAt: ms(p.taken_at), farmId: p.farm_id, stage: p.stage, progress: p.progress, kind: p.kind, userId: p.user_id, teamId: p.team_id, loc: p.loc, approved: p.approved, path: p.path });
+const mapPhoto = p => ({ id: p.id, reportId: p.report_id ?? null, issueId: p.issue_id ?? null, generalId: p.general_id ?? null, label: p.label, takenAt: ms(p.taken_at), farmId: p.farm_id, stage: p.stage, progress: p.progress, kind: p.kind, userId: p.user_id, teamId: p.team_id, loc: p.loc, approved: p.approved, path: p.path });
+const mapGeneral = g => ({ id: g.id, userId: g.user_id, teamId: g.team_id, at: ms(g.at), note: g.note, lang: g.lang, photoId: g.photo_id, status: g.status, resolvedAt: ms(g.resolved_at) });
 const mapTeam = t => ({ id: t.id, name: t.name, todayFarm: t.today_farm_id });
 
 // ---------- persistence of the local copy ----------
@@ -60,8 +62,8 @@ const localKey = () => `local:${state.me?.id}`;
 const cacheKey = () => `cache:${state.me?.id}`;
 export function save() {
   if (!state.me) return Promise.resolve();
-  const { drafts, farmPick, recentFarms, outbox, issueOutbox, pendingPhotos } = state;
-  return kvSet(localKey(), { drafts, farmPick, recentFarms, outbox, issueOutbox, pendingPhotos });
+  const { drafts, farmPick, recentFarms, outbox, issueOutbox, generalOutbox, pendingPhotos } = state;
+  return kvSet(localKey(), { drafts, farmPick, recentFarms, outbox, issueOutbox, generalOutbox, pendingPhotos });
 }
 function saveCache(server) { return kvSet(cacheKey(), server); }
 
@@ -72,6 +74,7 @@ function applyServer(server) {
     teams: server.teams.map(mapTeam), users: server.profiles.map(mapProfile), farms: server.farms.map(mapFarm),
     reports: server.reports.map(mapReport), issues: server.issues.map(mapIssue), photos: server.photos.map(mapPhoto),
     followUps: Object.fromEntries(server.followUps.map(f => [`${f.team_id}|${f.date}`, ms(f.at)])),
+    generals: (server.generals || []).map(mapGeneral),
     lastSync: server.at,
   });
   const me = state.users.find(u => u.id === state.me.id);
@@ -83,6 +86,10 @@ function overlayLocal() {
     if (state.issues.some(i => i.id === o.id)) continue;
     state.issues.push({ id: o.id, farmId: o.farmId, reportId: null, urgent: true, stage: o.issue.stage, category: o.issue.category, note: o.issue.note,
       lang: o.issue.lang, photoId: o.issue.photoId, reportedBy: state.me?.id, teamId: state.me?.teamId, at: o.queuedAt, status: 'open', pending: true, error: o.error || null });
+  }
+  for (const o of state.generalOutbox || []) {
+    if (state.generals.some(g => g.id === o.id)) continue;
+    state.generals.push({ id: o.id, userId: state.me?.id, teamId: state.me?.teamId, at: o.queuedAt, note: o.note, lang: o.lang, photoId: o.photoId, status: 'open', pending: true, error: o.error || null });
   }
   for (const p of state.pendingPhotos) if (!state.photos.some(x => x.id === p.id)) state.photos.push({ ...p, pending: true });
   for (const o of state.outbox) {
@@ -146,6 +153,7 @@ async function loadLocal() {
   if (local) Object.assign(state, local);
   state.recentFarms ||= [];
   state.issueOutbox ||= [];
+  state.generalOutbox ||= [];
   if (cache) applyServer(cache);
   else overlayLocal();
 }
@@ -163,7 +171,8 @@ async function doRefresh() {
   const q = (p) => p.then(({ data, error }) => { if (error) throw error; return data; });
   const none = Promise.resolve([]);
   try {
-    const [project, teams, profiles, farms, photos, reports, issues, followUps] = await Promise.all([
+    const soft = p => p.then(({ data, error }) => (error ? [] : data));
+    const [project, teams, profiles, farms, photos, reports, issues, followUps, generals] = await Promise.all([
       q(sb.from('project').select('*').maybeSingle()),
       role === 'client' ? none : q(sb.from('teams').select('*').order('id')),
       q(sb.from('profiles').select('*').order('full_name')),
@@ -172,10 +181,11 @@ async function doRefresh() {
       role === 'client' ? none : q(sb.from('reports').select('*').gte('date', since).order('submitted_at')),
       role === 'client' ? none : q(sb.from('issues').select('*').order('at')),
       mgr ? q(sb.from('follow_ups').select('*').gte('date', since)) : none,
+      role === 'client' ? none : soft(sb.from('general_reports').select('*').gte('at', since).order('at')),
     ]);
     const me = profiles.find(p => p.id === state.me.id);
     if (me && !me.active) { await signOut(); location.hash = '#/login'; return; }
-    const server = { project, teams, profiles, farms, photos, reports, issues, followUps, at: Date.now() };
+    const server = { project, teams, profiles, farms, photos, reports, issues, followUps, generals, at: Date.now() };
     applyServer(server);
     state.syncError = null;
     await saveCache(server);
@@ -207,9 +217,9 @@ export const reportIssues = r => {
 };
 export const photoMeta = id => state.photos.find(p => p.id === id);
 export const pendingCount = () => state.outbox.filter(o => !o.error).length + (state.issueOutbox || []).filter(o => !o.error).length
-  + state.pendingPhotos.filter(readyVideo).length;
+  + (state.generalOutbox || []).filter(o => !o.error).length + state.pendingPhotos.filter(readyVideo).length;
 // A video waits on the phone until the report or problem it belongs to has been sent.
-const readyVideo = p => p.kind === 'video' && !p.error && !!(p.reportId || p.issueId);
+const readyVideo = p => p.kind === 'video' && !p.error && !!(p.reportId || p.issueId || p.generalId);
 
 // Farms this worker opened recently, most recent first (for the farm chooser).
 export async function rememberFarm(farmId) {
@@ -280,7 +290,7 @@ export async function savePhoto(file, meta) {
   g.drawImage(bmp, 0, 0, w, h);
 
   const takenAt = Date.now();
-  const label = meta.kind === 'drawing' ? `${meta.farmId} · DRAWING` : photoLabel(meta.farmId, meta.stage, meta.progress, takenAt);
+  const label = meta.kind === 'drawing' ? `${meta.farmId} · DRAWING` : photoLabel(meta.farmId || 'GENERAL', meta.stage, meta.progress, takenAt);
   if (meta.kind !== 'drawing') {
     const fs = Math.max(14, Math.round(w / 45));
     g.fillStyle = 'rgba(9,59,53,.82)';
@@ -295,7 +305,7 @@ export async function savePhoto(file, meta) {
   await putPhoto({ id, blob });
   const rec = {
     id, label, takenAt, farmId: meta.farmId, stage: meta.stage ?? null, progress: meta.progress ?? null, kind: meta.kind,
-    userId: state.me.id, teamId: state.me.teamId ?? null, loc: meta.loc ?? null, approved: false, path: `${meta.farmId}/${id}.jpg`,
+    userId: state.me.id, teamId: state.me.teamId ?? null, loc: meta.loc ?? null, approved: false, path: `${meta.farmId || 'general'}/${id}.jpg`,
   };
   state.pendingPhotos.push(rec);
   state.photos.push({ ...rec, pending: true });
@@ -313,9 +323,9 @@ export async function saveVideo(file, meta) {
   const id = newId(), takenAt = Date.now();
   await putPhoto({ id, blob: file });
   const rec = {
-    id, label: `${meta.farmId} · VIDEO · ${shortDate(takenAt)}`, takenAt, farmId: meta.farmId, stage: meta.stage ?? null, progress: null, kind: 'video',
-    userId: state.me.id, teamId: state.me.teamId ?? null, loc: meta.loc ?? null, approved: false, path: `${meta.farmId}/${id}.${ext}`,
-    contentType: type, reportId: null, issueId: null,
+    id, label: `${meta.farmId || 'GENERAL'} · VIDEO · ${shortDate(takenAt)}`, takenAt, farmId: meta.farmId, stage: meta.stage ?? null, progress: null, kind: 'video',
+    userId: state.me.id, teamId: state.me.teamId ?? null, loc: meta.loc ?? null, approved: false, path: `${meta.farmId || 'general'}/${id}.${ext}`,
+    contentType: type, reportId: null, issueId: null, generalId: null,
   };
   state.pendingPhotos.push(rec);
   state.photos.push({ ...rec, pending: true });
@@ -340,7 +350,7 @@ async function uploadPhoto(rec) {
   const { error } = await sb.from('photos').insert({
     id: rec.id, farm_id: rec.farmId, stage: rec.stage === 'drawing' ? null : rec.stage, progress: rec.progress, kind: rec.kind,
     label: rec.label, path: rec.path, taken_at: new Date(rec.takenAt).toISOString(), user_id: rec.userId, team_id: rec.teamId, loc: rec.loc,
-    ...(rec.kind === 'video' ? { report_id: rec.reportId, issue_id: rec.issueId } : {}),
+    ...(rec.kind === 'video' ? { report_id: rec.reportId, issue_id: rec.issueId, general_id: rec.generalId ?? null } : {}),
   });
   if (error && error.code !== '23505') throw error;
   state.pendingPhotos = state.pendingPhotos.filter(p => p.id !== rec.id);
@@ -383,6 +393,18 @@ export async function queueIssue(farmId, issue, videoIds = []) {
   sync();
   return id;
 }
+
+// A general report: free text (+ optional photo / problem videos), not about one farm.
+export async function queueGeneral({ note, photoId, videoIds = [] }) {
+  const id = newId();
+  attachVideos(videoIds, { generalId: id });
+  state.generalOutbox.push({ id, note, lang: getLang(), photoId: photoId || null, photoIds: [photoId].filter(Boolean), queuedAt: Date.now() });
+  overlayLocal();
+  await save();
+  sync();
+  return id;
+}
+export const resolveGeneral = id => run(sb.from('general_reports').update({ status: 'resolved', resolved_at: new Date().toISOString() }).eq('id', id)).then(refresh);
 
 // Ask the browser to wake the service worker when the phone is back online, even if the app is closed
 // (Android / Chrome). Elsewhere the upload happens the next time the app is opened.
@@ -446,9 +468,24 @@ export async function sync() {
       state.outbox = state.outbox.filter(x => x.id !== o.id);
       await save();
     }
+    // General reports after the farm reports, so they never hold those up.
+    for (const o of [...state.generalOutbox]) {
+      if (o.error) continue;
+      for (const pid of o.photoIds) {
+        const p = state.pendingPhotos.find(x => x.id === pid);
+        if (p) { await uploadPhoto(p); await save(); }
+      }
+      const { error } = await sb.from('general_reports').insert({ id: o.id, note: o.note, lang: o.lang, photo_id: o.photoId, team_id: state.me.teamId ?? null, at: new Date(o.queuedAt).toISOString() });
+      if (error && error.code !== '23505') {
+        if (/does not exist|permission|violates|not allowed/i.test(error.message)) { o.error = error.message; await save(); continue; }
+        throw error;
+      }
+      state.generalOutbox = state.generalOutbox.filter(x => x.id !== o.id);
+      await save();
+    }
     // Videos last, once their report or problem is in: a big file never holds up the report itself.
     for (const p of state.pendingPhotos.filter(readyVideo)) {
-      if (state.outbox.some(o => o.id === p.reportId) || state.issueOutbox.some(o => o.id === p.issueId)) continue;
+      if (state.outbox.some(o => o.id === p.reportId) || state.issueOutbox.some(o => o.id === p.issueId) || state.generalOutbox.some(o => o.id === p.generalId)) continue;
       try { await uploadPhoto(p); }
       catch (e) {
         if (!/maximum allowed size|too large|413|mime|check constraint|violates|exceeded/i.test(`${e.message} ${e.statusCode || ''}`)) throw e;
@@ -482,7 +519,7 @@ export async function dismissFailed(reportId) {
 export async function reloadLocal() {
   if (!state.me) return;
   const local = await kvGet(localKey());
-  if (local) Object.assign(state, { outbox: local.outbox || [], issueOutbox: local.issueOutbox || [], pendingPhotos: local.pendingPhotos || [] });
+  if (local) Object.assign(state, { outbox: local.outbox || [], issueOutbox: local.issueOutbox || [], generalOutbox: local.generalOutbox || [], pendingPhotos: local.pendingPhotos || [] });
   await refresh();
 }
 

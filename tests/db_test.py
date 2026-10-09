@@ -223,6 +223,25 @@ check('supervisor changes accounts', as_('sup', "update profiles set lang='pt' w
 check('supervisor creates teams', raises('sup', "insert into teams (id, name) values ('Z', 'Team Z')") is None)
 check('manager still runs farms (progress correction)', as_('mgr', "update farms set name = 'Test' where id = 'HM17'") == 1)
 
+# --- general reports (not about one farm) ---
+g1, g2 = str(uuid.uuid4()), str(uuid.uuid4())
+gins = "insert into general_reports (id, note, user_id) values (%s, %s, %s)"
+check('worker writes a general report', raises('jamal', gins, (g1, 'Truck broke down', U['jamal'])) is None)
+check('general report needs text', raises('jamal', gins, (str(uuid.uuid4()), '   ', U['jamal'])) is not None)
+check('worker cannot write as someone else', raises('jamal', gins, (str(uuid.uuid4()), 'x', U['paulo'])) is not None)
+check('client cannot write general reports', raises('client', gins, (str(uuid.uuid4()), 'x', U['client'])) is not None)
+check('manager writes a general report', raises('mgr', gins, (g2, 'Warehouse short of pipes', U['mgr'])) is None)
+check("worker sees only their own general reports", [str(r[0]) for r in as_('jamal', "select id from general_reports")] == [g1])
+check('paulo does not see jamal\'s general report', as_('paulo', "select count(*) from general_reports")[0][0] == 0)
+check('supervisor sees all general reports', as_('sup', "select count(*) from general_reports")[0][0] == 2)
+check('client sees no general reports', as_('client', "select count(*) from general_reports")[0][0] == 0)
+check('worker cannot mark handled', as_('jamal', "update general_reports set status = 'resolved' where id = %s", (g1,)) == 0)
+check('manager marks handled', as_('mgr', "update general_reports set status = 'resolved' where id = %s", (g1,)) == 1)
+gp = str(uuid.uuid4())
+check('photo without a farm (general report) is accepted',
+      raises('jamal', "insert into photos (id, farm_id, kind, label, path, taken_at, user_id) values (%s, null, 'issue', 'GENERAL', %s, now(), %s)",
+             (gp, f'general/{gp}.jpg', U['jamal'])) is None)
+
 print(f'\n{passed} passed, {failed} failed')
 conn.close()
 sys.exit(1 if failed else 0)

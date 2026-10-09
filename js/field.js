@@ -2,7 +2,7 @@
 import { t, getLang } from './i18n.js';
 import { STAGES, CATEGORIES, STEP, LOCATION_RADIUS_KM, dateKey, hhmm, farmProgress, distanceKm } from './data.js';
 import { state, save, me, farm, team, reportFor, reportIssues, savePhoto, saveVideo, discardVideo, VIDEO_MAX_MB, photoMeta, queueReport, queueIssue, newId, dismissFailed,
-  rememberFarm, activeFarms } from './store.js';
+  rememberFarm, activeFarms, queueGeneral, isMgr } from './store.js';
 import { esc, stageName, ICONS, topbar, photoImg, hydratePhotos, pct, getPosition, pickPhoto, progressBar, farmTitle, toast, fail, pickVideo, videoEl } from './ui.js';
 
 const go = h => { location.hash = h; };
@@ -39,6 +39,7 @@ export async function homeView() {
   const u = me();
   const today = dateKey();
   const mine = state.reports.filter(r => r.date === today && r.userId === u.id && !r.error);
+  const myGenerals = state.generals.filter(g => g.userId === u.id && dateKey(new Date(g.at)) === today && !g.error);
   const recent = (state.recentFarms || []).map(farm).filter(f => f && f.status !== 'cancelled').slice(0, 3);
   return {
     html: `<div class="screen">${topbar()}
@@ -48,11 +49,15 @@ export async function homeView() {
       <nav class="stack" style="gap:12px">
         <a class="action primary" href="#/choose">${ICONS.info}<span><strong>${esc(t('daily_report'))}</strong><small>${esc(t('daily_report_hint'))}</small></span></a>
         <a class="action warn" href="#/problem"><b aria-hidden="true">⚠</b><span><strong>${esc(t('urgent_btn'))}</strong><small>${esc(t('urgent_hint'))}</small></span></a>
+        <a class="action plain" href="#/general"><b aria-hidden="true">📝</b><span><strong>${esc(t('general_report'))}</strong><small>${esc(t('general_hint'))}</small></span></a>
       </nav>
       ${recent.length ? `<div class="stack" style="gap:6px"><div class="eyebrow muted">${esc(t('recent_farms'))}</div><ul class="list">${recent.map(f => farmRow(f)).join('')}</ul></div>` : ''}
       ${mine.length ? `<div class="stack" style="gap:6px"><div class="eyebrow muted">${esc(t('sent_today'))}</div><ul class="list">
         ${mine.map(r => `<li><a class="rowlink" href="#/report/${r.id}"><span style="flex:1">✓ ${esc(farmTitle(farm(r.farmId) || { id: r.farmId }))}</span>
           <span class="r small muted">${hhmm(r.submittedAt)}${r.pending ? ' · ' + esc(t('pending_upload')) : ''}</span></a></li>`).join('')}</ul></div>` : ''}
+      ${myGenerals.length ? `<div class="stack" style="gap:6px"><div class="eyebrow muted">📝 ${esc(t('general_reports'))}</div><ul class="list">
+        ${myGenerals.map(g => `<li><span style="flex:1" dir="auto">${esc(g.note.slice(0, 60))}${g.note.length > 60 ? '…' : ''}</span>
+          <span class="r small muted">${hhmm(g.at)}${g.pending ? ' · ' + esc(t('pending_upload')) : ''}</span></li>`).join('')}</ul></div>` : ''}
     </main></div>`,
     mount(root) {
       root.querySelectorAll('[data-dismiss]').forEach(b => b.onclick = () => dismissFailed(b.dataset.dismiss));
@@ -307,7 +312,6 @@ export function updateView({ farmId }) {
         <button class="linkbtn" data-act="editissues" style="align-self:flex-start">${esc(d.issues.length ? t('edit_problems') : t('report_issue'))}</button>
         <div><div class="strong">${d.items.filter(i => i.action).length} / ${n} ${esc(t('reviewed'))} · ${photoCount} ${esc(photoCount === 1 ? t('photo_1') : t('photos_n'))}</div>
           <div style="${loc && !loc.verified ? 'color:var(--red)' : ''}">${esc(locLine)}</div></div>
-        ${videoSection(d.videoIds)}
         <span class="spacer"></span>
         <button class="btn" data-act="submit">${esc(t('submit_day'))}</button>`;
       break;
@@ -376,7 +380,6 @@ export function updateView({ farmId }) {
       on('submit', () => submit(f, u, d));
 
       if (d.step === 'summary') {
-        bindVideos(root, d, () => ({ farmId: f.id, stage: null, loc: d.location && !d.location.error ? { lat: d.location.lat, lng: d.location.lng } : null }), commit);
         if (!d.location) {
           getPosition().then(p => {
             d.location = p
@@ -430,7 +433,7 @@ async function submit(f, u, d) {
   const lang = getLang();
   const issues = d.issues.map(i => ({ stage: i.stage, category: i.category, note: i.note, photoId: i.photoId, lang }));
   delete state.drafts[d.key];
-  await queueReport(report, issues, d.videoIds || []);
+  await queueReport(report, issues);
   location.hash = `#/done/${report.id}`;
 }
 
@@ -530,6 +533,51 @@ export function problemView({ farmId }) {
         toast(online ? t('urgent_sent') : t('urgent_queued'));
         go(farmId ? `#/work/${farmId}` : '#/');
       });
+      await hydratePhotos(root);
+    },
+  };
+}
+
+// ---------- General report: not about one farm (transport, warehouse, team, safety…) ----------
+export function generalView() {
+  const d = state.drafts.__general ||= { note: '', photoId: null, videoIds: [] };
+  const commit = () => save().then(() => window.dispatchEvent(new Event('rerender')));
+  const back = isMgr(me()) ? '#/manage' : '#/';
+  const ready = () => !!d.note.trim();
+  return {
+    html: `<div class="screen">${topbar({ back })}<main class="content">
+      <div class="eyebrow">📝 ${esc(t('general_report'))}</div>
+      <h1 class="h1" style="font-size:26px">${esc(t('general_title'))}</h1>
+      <p class="muted" style="margin:0">${esc(t('general_hint'))}</p>
+      <textarea class="input" id="general-note" data-note rows="6" style="min-height:160px" placeholder="${esc(t('general_placeholder'))}">${esc(d.note)}</textarea>
+      <div class="eyebrow">${esc(t('take_choose_photo'))} <span class="muted">(${esc(t('optional'))})</span></div>
+      ${d.photoId ? `<button data-zoom="${d.photoId}" style="border:0;padding:0;background:none">${photoImg(d.photoId).replace('<img', '<img class="photo-preview"')}</button>` : ''}
+      <div class="btn-row"><button class="btn ghost sm" data-act="camera" style="width:100%">${ICONS.camera} ${esc(t('take_photo'))}</button>
+        <button class="btn ghost sm" data-act="gallery" style="width:100%">${esc(t('choose_from_phone'))}</button></div>
+      ${videoSection(d.videoIds)}
+      <button class="btn" data-act="send" ${ready() ? '' : 'disabled'}>${esc(t('send'))}</button>
+    </main></div>`,
+    async mount(root) {
+      const note = root.querySelector('[data-note]');
+      note.oninput = () => { d.note = note.value; root.querySelector('[data-act=send]').disabled = !ready(); save(); };
+      const capture = async useCamera => {
+        const file = await pickPhoto(useCamera);
+        if (!file) return;
+        const rec = await savePhoto(file, { farmId: null, stage: null, progress: null, kind: 'issue' });
+        d.photoId = rec.id;
+        commit();
+      };
+      root.querySelector('[data-act=camera]').onclick = () => capture(true);
+      root.querySelector('[data-act=gallery]').onclick = () => capture(false);
+      bindVideos(root, d, () => ({ farmId: null, stage: null }), commit);
+      root.querySelector('[data-act=send]').onclick = async () => {
+        const online = navigator.onLine;
+        await queueGeneral({ note: d.note.trim(), photoId: d.photoId, videoIds: d.videoIds });
+        delete state.drafts.__general;
+        await save();
+        toast(online ? t('general_sent') : t('urgent_queued'));
+        go(back);
+      };
       await hydratePhotos(root);
     },
   };
