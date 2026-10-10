@@ -24,7 +24,15 @@ export async function dashboardView() {
   const workers = state.users.filter(u => u.role === 'field' && u.active).sort((a, b) => a.name.localeCompare(b.name));
   const reportsBy = new Map();
   todays.forEach(r => { if (!reportsBy.has(r.userId)) reportsBy.set(r.userId, []); reportsBy.get(r.userId).push(r); });
-  const workersReported = workers.filter(u => reportsBy.has(u.id)).length;
+  // Anything a team leader sent today counts: daily report, problem reported on its own, general report.
+  const isToday = ms => ms && dateKey(new Date(ms)) === today;
+  const sentToday = u => ({
+    reps: reportsBy.get(u.id) || [],
+    probs: state.issues.filter(i => i.reportedBy === u.id && !i.reportId && !i.pending && isToday(i.at)),
+    gens: state.generals.filter(g => g.userId === u.id && !g.pending && isToday(g.at)),
+  });
+  const sentAny = x => x.reps.length + x.probs.length + x.gens.length > 0;
+  const workersReported = workers.filter(u => sentAny(sentToday(u))).length;
   const fTitle = id => farmTitle(farm(id) || { id });
 
   // Which farms have open problems, with how many (urgent ones marked)
@@ -47,12 +55,15 @@ export async function dashboardView() {
   }).join('');
 
   const workerRows = workers.map(u => {
-    const reps = reportsBy.get(u.id) || [];
+    const x = sentToday(u), reps = x.reps, any = sentAny(x);
     const fu = u.teamId && state.followUps[`${u.teamId}|${today}`];
     return `<tr><td><strong>${esc(u.name)}</strong>${u.teamId ? ` <span class="small muted">(${esc(team(u.teamId).name)})</span>` : ''}</td>
-      <td>${reps.length ? reps.map(r => `<a class="tag ok" href="#/report/${r.id}" style="text-decoration:none">✓ ${esc(r.farmId)} · ${hhmm(r.submittedAt)}</a>`).join(' ')
-        : `<span class="tag warn">${esc(t('not_reported'))}</span>`}</td>
-      <td style="text-align:end">${!reps.length && u.teamId ? `<button class="btn xs" data-follow="${esc(u.teamId)}" ${fu ? 'disabled' : ''}>${esc(fu ? t('followed_up', { t: hhmm(fu) }) : t('follow_up'))}</button>` : ''}</td></tr>`;
+      <td>${any ? [
+          ...reps.map(r => `<a class="tag ok" href="#/report/${r.id}" style="text-decoration:none">✓ ${esc(r.farmId)} · ${hhmm(r.submittedAt)}</a>`),
+          ...x.probs.map(i => `<a class="tag amber" href="#/farm/${esc(i.farmId)}/issues" style="text-decoration:none">⚠ ${esc(i.farmId)} · ${hhmm(i.at)}</a>`),
+          ...x.gens.map(g => `<span class="tag blue">📝 ${esc(t('general_report'))} · ${hhmm(g.at)}</span>`),
+        ].join(' ') : `<span class="tag warn">${esc(t('not_reported'))}</span>`}</td>
+      <td style="text-align:end">${!any && u.teamId ? `<button class="btn xs" data-follow="${esc(u.teamId)}" ${fu ? 'disabled' : ''}>${esc(fu ? t('followed_up', { t: hhmm(fu) }) : t('follow_up'))}</button>` : ''}</td></tr>`;
   }).join('');
 
   const reportRows = todays.map(r => {
