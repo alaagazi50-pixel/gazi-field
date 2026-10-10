@@ -154,6 +154,8 @@ async function loadLocal() {
   state.recentFarms ||= [];
   state.issueOutbox ||= [];
   state.generalOutbox ||= [];
+  // v0.6.2 gave up on general reports sent before the database had their table: send those again.
+  for (const o of state.generalOutbox) if (o.error && NOT_READY.test(o.error)) delete o.error;
   if (cache) applyServer(cache);
   else overlayLocal();
 }
@@ -415,6 +417,13 @@ async function requestBackgroundUpload() {
   } catch { /* not supported */ }
 }
 
+// Errors that only mean "the database is not set up for this yet": retry later, never give up.
+const NOT_READY = /does not exist|schema cache|PGRST20/i;
+// No signal / server unreachable: stop this round, the rest would fail the same way.
+const offlineError = e => e instanceof TypeError || /Failed to fetch|NetworkError|Load failed|network/i.test(e?.message || '');
+// A queued item that can never be uploaded (its farm was deleted, its photo is gone from the phone).
+const deadItem = e => /violates foreign key|Photo file missing/i.test(e?.message || '');
+
 let syncing = false;
 let retryTimer = null;
 export async function sync() {
@@ -430,8 +439,15 @@ export async function sync() {
     // The phone may have been offline for hours: getSession() refreshes an expired login first.
     await sb.auth.getSession();
     // urgent problems first
+    let later = null;   // first error of an item we skipped: retried in 20 s, after trying everything else
+    const skip = async (o, e) => {
+      if (offlineError(e)) throw e;
+      if (deadItem(e)) { o.error = e.message; await save(); return; }
+      later ||= e;
+    };
     for (const o of [...state.issueOutbox]) {
       if (o.error) continue;
+      try {
       for (const pid of o.photoIds) {
         const p = state.pendingPhotos.find(x => x.id === pid);
         if (p) { await uploadPhoto(p); await save(); }
@@ -444,9 +460,11 @@ export async function sync() {
       state.issueOutbox = state.issueOutbox.filter(x => x.id !== o.id);
       await save();
       alertManagers(o.id);
+      } catch (e) { await skip(o, e); }
     }
     for (const o of [...state.outbox]) {
       if (o.error) continue;
+      try {
       for (const pid of o.photoIds) {
         const p = state.pendingPhotos.find(x => x.id === pid);
         if (p) { await uploadPhoto(p); await save(); }
@@ -467,32 +485,37 @@ export async function sync() {
       }
       state.outbox = state.outbox.filter(x => x.id !== o.id);
       await save();
+      } catch (e) { await skip(o, e); }
     }
     // General reports after the farm reports, so they never hold those up.
     for (const o of [...state.generalOutbox]) {
       if (o.error) continue;
+      try {
       for (const pid of o.photoIds) {
         const p = state.pendingPhotos.find(x => x.id === pid);
         if (p) { await uploadPhoto(p); await save(); }
       }
       const { error } = await sb.from('general_reports').insert({ id: o.id, note: o.note, lang: o.lang, photo_id: o.photoId, team_id: state.me.teamId ?? null, at: new Date(o.queuedAt).toISOString() });
       if (error && error.code !== '23505') {
-        if (/does not exist|permission|violates|not allowed/i.test(error.message)) { o.error = error.message; await save(); continue; }
+        if (!NOT_READY.test(error.message) && /permission|violates|not allowed/i.test(error.message)) { o.error = error.message; await save(); continue; }
         throw error;
       }
       state.generalOutbox = state.generalOutbox.filter(x => x.id !== o.id);
       await save();
+      } catch (e) { await skip(o, e); }
     }
     // Videos last, once their report or problem is in: a big file never holds up the report itself.
     for (const p of state.pendingPhotos.filter(readyVideo)) {
       if (state.outbox.some(o => o.id === p.reportId) || state.issueOutbox.some(o => o.id === p.issueId) || state.generalOutbox.some(o => o.id === p.generalId)) continue;
       try { await uploadPhoto(p); }
       catch (e) {
-        if (!/maximum allowed size|too large|413|mime|check constraint|violates|exceeded/i.test(`${e.message} ${e.statusCode || ''}`)) throw e;
+        if (offlineError(e)) throw e;
+        if (NOT_READY.test(e.message) || !/maximum allowed size|too large|413|mime|check constraint|violates|exceeded/i.test(`${e.message} ${e.statusCode || ''}`)) { later ||= e; continue; }
         p.error = e.message;   // can never succeed: stop retrying, keep the note
       }
       await save();
     }
+    if (later) throw later;
     state.syncError = null;
   } catch (e) {
     state.syncError = e.message;
@@ -508,9 +531,11 @@ export async function sync() {
 export async function dismissFailed(reportId) {
   state.outbox = state.outbox.filter(o => o.id !== reportId);
   state.issueOutbox = state.issueOutbox.filter(o => o.id !== reportId);
+  state.generalOutbox = state.generalOutbox.filter(o => o.id !== reportId);
+  state.generals = state.generals.filter(g => g.id !== reportId);
   state.reports = state.reports.filter(r => r.id !== reportId);
   state.issues = state.issues.filter(i => i.reportId !== reportId);
-  state.pendingPhotos = state.pendingPhotos.filter(p => p.reportId !== reportId && p.issueId !== reportId);
+  state.pendingPhotos = state.pendingPhotos.filter(p => p.reportId !== reportId && p.issueId !== reportId && p.generalId !== reportId);
   await save();
   rerender();
 }

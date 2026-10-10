@@ -17,7 +17,8 @@ const greeting = () => {
 // Reports the server refused (e.g. someone already sent this farm's report today).
 function failedCards() {
   const failed = [...state.outbox.filter(o => o.error).map(o => ({ id: o.id, title: `${o.report.farmId} · ${o.report.date}`, error: o.error })),
-    ...(state.issueOutbox || []).filter(o => o.error).map(o => ({ id: o.id, title: `${o.farmId} · ${t('urgent_tag')}`, error: o.error }))];
+    ...(state.issueOutbox || []).filter(o => o.error).map(o => ({ id: o.id, title: `${o.farmId} · ${t('urgent_tag')}`, error: o.error })),
+    ...(state.generalOutbox || []).filter(o => o.error).map(o => ({ id: o.id, title: `📝 ${t('general_report')} · ${o.note.slice(0, 40)}`, error: o.error }))];
   return failed.map(o => `<div class="card alert flat stack">
     <strong>${esc(o.title)}</strong><div class="small">${esc(t('report_failed', { e: o.error }))}</div>
     <button class="btn ghost xs" data-dismiss="${esc(o.id)}" style="align-self:flex-start">${esc(t('dismiss'))}</button></div>`).join('');

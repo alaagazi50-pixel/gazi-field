@@ -11,7 +11,7 @@ import { peopleView } from './people.js';
 import { analysisView } from './analysis.js';
 import { clientView, clientFarmView } from './client.js';
 
-export const APP_VERSION = '0.6.2';
+export const APP_VERSION = '0.6.3';
 
 // [path, view, roles allowed]. Roles: field (worker), manager, client.
 const ROUTES = [
@@ -121,7 +121,7 @@ function syncView() {
   return {
     html: `<div class="screen">${topbar({ back: '#/' })}<main class="content">
       <h1 class="h1">${esc(t('waiting_sync', { n: pendingCount() }))}</h1>
-      <ul class="list">${[...(state.issueOutbox || []).map(o => ({ title: `⚠ ${o.farmId} · ${t('urgent_tag')}`, o })), ...state.outbox.map(o => ({ title: `${o.report.farmId} · ${o.report.date}`, o }))]
+      <ul class="list">${[...(state.issueOutbox || []).map(o => ({ title: `⚠ ${o.farmId} · ${t('urgent_tag')}`, o })), ...state.outbox.map(o => ({ title: `${o.report.farmId} · ${o.report.date}`, o })), ...(state.generalOutbox || []).map(o => ({ title: `📝 ${t('general_report')} · ${o.note.slice(0, 30)}`, o }))]
         .map(({ title, o }) => `<li>${esc(title)}<span class="r small ${o.error ? '' : 'muted'}" style="${o.error ? 'color:var(--red)' : ''}">${esc(o.error ? t('report_failed', { e: o.error }) : `${o.photoIds.length} ${t('photos_n')}`)}</span></li>`).join('')}</ul>
       ${state.syncError ? `<div class="small" style="color:var(--red)">${esc(t('sync_failed'))}</div>` : ''}
       <button class="btn" data-act="sync">${esc(t('sync_now'))}</button>
