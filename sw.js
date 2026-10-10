@@ -1,11 +1,11 @@
 // Service worker: offline app shell, push reminders, and automatic upload of reports queued offline.
-const CACHE = 'gazi-field-v0.6.4';
+const CACHE = 'gazi-field-v0.6.5';
 const SHELL = [
   './', './index.html', './manifest.webmanifest', './css/app.css',
   './js/app.js', './js/i18n.js', './js/db.js', './js/data.js', './js/store.js', './js/ui.js',
   './js/field.js', './js/farm.js', './js/manage.js', './js/client.js', './js/analysis.js',
-  './js/config.js', './js/people.js', './js/vendor/supabase.js',
-  './assets/logo.jpg', './assets/icon-192.png', './assets/icon-512.png', './assets/icon-maskable.png', './assets/apple-touch-icon.png',
+  './js/config.js', './js/people.js', './js/report.js', './js/vendor/supabase.js',
+  './assets/logo.jpg', './assets/edison-vision.png', './assets/icon-192.png', './assets/icon-512.png', './assets/icon-maskable.png', './assets/apple-touch-icon.png',
 ];
 
 self.addEventListener('install', e => {

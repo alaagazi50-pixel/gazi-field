@@ -10,8 +10,9 @@ import { dashboardView, farmsListView } from './manage.js';
 import { peopleView } from './people.js';
 import { analysisView } from './analysis.js';
 import { clientView, clientFarmView } from './client.js';
+import { progressReportView } from './report.js';
 
-export const APP_VERSION = '0.6.4';
+export const APP_VERSION = '0.6.5';
 
 // [path, view, roles allowed]. Roles: field (worker), manager, client.
 const ROUTES = [
@@ -34,6 +35,7 @@ const ROUTES = [
   ['/manage/people', peopleView, ['supervisor']],
   ['/client', clientView, ['client', 'manager', 'supervisor']],
   ['/client/farm/:farmId', clientFarmView, ['client', 'manager', 'supervisor']],
+  ['/client/report', progressReportView, ['client', 'manager', 'supervisor']],
 ];
 
 function match(path) {

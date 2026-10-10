@@ -49,7 +49,8 @@ export function clientView() {
   return {
     html: `<div class="screen wide">${topbar()}<main class="content">
       ${isMgr(me()) ? mgrNav('client') : ''}
-      <div class="eyebrow">${esc(t('client_portal'))} · ${esc(state.project.name.toUpperCase())} · ${esc(state.project.country.toUpperCase())}</div>
+      <div class="row between"><div class="eyebrow">${esc(t('client_portal'))} · ${esc(state.project.name.toUpperCase())} · ${esc(state.project.country.toUpperCase())}</div>
+        <a class="btn sm" href="#/client/report">⬇ ${esc(t('progress_report'))} (PDF)</a></div>
       <div class="grid c4">
         ${kpi(avgOf(live) + '%', t('project_progress'))}
         ${kpi(count(live, 'completed'), t('completed'), 'done')}
