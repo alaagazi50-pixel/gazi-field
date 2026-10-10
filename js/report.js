@@ -7,6 +7,9 @@ import { esc, stageName, topbar } from './ui.js';
 
 const dateLong = ms => new Date(ms).toLocaleDateString(getLang() === 'pt' ? 'pt-PT' : getLang() === 'ar' ? 'ar' : 'en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
 const dateShort = ms => (ms ? new Date(ms).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' }).replace(/\//g, '.') : '—');
+const CLIENT = 'NETAFIM';
+// Long stage names in narrow columns: allow a hyphenated break (Commis-sioning) instead of a random split.
+const soft = text => esc(text).replace(/([A-Za-zÀ-ÿ]{6})([A-Za-zÀ-ÿ]{5,})/g, '$1&shy;$2');   // the customer this report is made for
 const STATUS = { completed: 'completed', no_power: 'done_no_power', in_progress: 'in_progress', not_started: 'not_started', cancelled: 'cancelled' };
 
 export function progressReportView() {
@@ -17,7 +20,6 @@ export function progressReportView() {
   const count = (list, st) => list.filter(f => completion(f) === st).length;
   const avg = list => (list.length ? Math.round(list.reduce((n, f) => n + farmProgress(f), 0) / list.length) : 0);
   const dataAsOf = Math.max(0, ...live.map(f => f.updatedAt || 0)) || now;
-  const totalWeight = STAGES.reduce((n, s) => n + s.weight, 0);
 
   const kpi = (v, label, cls = '') => `<div class="rp-kpi ${cls}"><b>${v}</b><span>${esc(label)}</span></div>`;
   const regionRows = regions.map(r => {
@@ -27,21 +29,14 @@ export function progressReportView() {
   }).join('') + `<tr class="rp-total"><td><b>${esc(t('total'))}</b></td><td>${live.length}</td><td>${count(live, 'completed')}</td><td>${count(live, 'no_power')}</td>
       <td>${count(live, 'in_progress')}</td><td>${count(live, 'not_started')}</td><td><b>${avg(live)}%</b></td></tr>`;
 
-  const stageRows = STAGES.map(s => {
-    const vals = live.map(f => f.stages[s.id] || 0);
-    const pct = vals.length ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length) : 0;
-    return `<tr><td>${esc(stageName(s.id))}</td><td>${s.weight} / ${totalWeight}</td><td>${vals.filter(v => v >= 100).length}</td>
-      <td>${vals.filter(v => v > 0 && v < 100).length}</td><td>${vals.filter(v => !v).length}</td>
-      <td class="rp-barcell"><span class="rp-bar"><i style="width:${pct}%"></i></span><b>${pct}%</b></td></tr>`;
-  }).join('');
-
-  const cell = v => (v >= 100 ? `<td class="c-ok">✓</td>` : v > 0 ? `<td class="c-mid">${v}</td>` : `<td class="c-no">–</td>`);
+  const cell = v => (v >= 100 ? `<td class="c-ok">✓</td>` : v > 0 ? `<td class="c-mid">${v}%</td>` : `<td class="c-no">–</td>`);
   const farmRows = r => all.filter(f => (f.region || '—') === r && f.status !== 'cancelled').map(f => {
     const st = completion(f);
     return `<tr><td><b>${esc(f.id)}</b></td><td class="rp-name">${esc(f.name || '')}</td>${STAGES.map(s => cell(f.stages[s.id] || 0)).join('')}
       <td><b>${farmProgress(f)}%</b></td><td class="st-${st}">${esc(t(STATUS[st]))}</td><td>${dateShort(f.updatedAt)}</td></tr>`;
   }).join('');
-  const farmHead = `<tr><th>${esc(t('farm'))}</th><th>${esc(t('name'))}</th>${STAGES.map(s => `<th class="rp-st" title="${esc(stageName(s.id))}">${esc(stageName(s.id))}</th>`).join('')}
+  const farmCols = `<colgroup><col class="c-code"><col class="c-name">${STAGES.map(() => '<col class="c-st">').join('')}<col class="c-pct"><col class="c-status"><col class="c-date"></colgroup>`;
+  const farmHead = `<tr><th>${esc(t('farm'))}</th><th>${esc(t('name'))}</th>${STAGES.map(s => `<th class="rp-st" title="${esc(stageName(s.id))}">${soft(stageName(s.id))}</th>`).join('')}
     <th>%</th><th>${esc(t('status'))}</th><th>${esc(t('last_update'))}</th></tr>`;
 
   return {
@@ -53,7 +48,7 @@ export function progressReportView() {
       <header class="rp-head">
         <img src="assets/logo.jpg" alt="GAZI GROUP" class="rp-gazi">
         <div class="rp-title"><h1>${esc(t('progress_report'))}</h1>
-          <div>${esc(state.project.name)}${state.project.country ? ` · ${esc(state.project.country)}` : ''}</div>
+          <div class="rp-project"><b>${CLIENT}</b> · ${esc(state.project.name)}${state.project.country ? ` · ${esc(state.project.country)}` : ''}</div>
           <div class="rp-dates">${esc(t('report_date'))}: <b>${esc(dateLong(now))} · ${hhmm(now)}</b> &nbsp;·&nbsp; ${esc(t('data_as_of'))}: <b>${esc(dateLong(dataAsOf))}</b></div></div>
       </header>
 
@@ -66,19 +61,15 @@ export function progressReportView() {
       </section>
       <div class="rp-overall"><span class="rp-bar big"><i style="width:${avg(live)}%"></i></span></div>
 
-      <section class="rp-two">
-        <div><h2>${esc(t('by_region'))}</h2>
+      <section class="rp-regions">
+        <h2>${esc(t('by_region'))}</h2>
           <table class="rp-tbl"><thead><tr><th>${esc(t('region'))}</th><th>${esc(t('farms'))}</th><th>${esc(t('completed'))}</th><th>${esc(t('done_no_power'))}</th>
-            <th>${esc(t('in_progress'))}</th><th>${esc(t('not_started'))}</th><th>${esc(t('progress'))}</th></tr></thead><tbody>${regionRows}</tbody></table></div>
-        <div><h2>${esc(t('by_stage'))}</h2>
-          <table class="rp-tbl"><thead><tr><th>${esc(t('stage'))}</th><th>${esc(t('weight'))}</th><th>${esc(t('ready'))}</th><th>${esc(t('in_progress'))}</th>
-            <th>${esc(t('not_started'))}</th><th>${esc(t('progress'))}</th></tr></thead><tbody>${stageRows}</tbody></table></div>
+            <th>${esc(t('in_progress'))}</th><th>${esc(t('not_started'))}</th><th>${esc(t('progress'))}</th></tr></thead><tbody>${regionRows}</tbody></table>
       </section>
-      <p class="rp-note">${esc(t('no_power_hint'))} ${esc(t('weights_note'))}</p>
 
       ${regions.map(r => `<section class="rp-region"><h2>${esc(r)} · ${live.filter(f => (f.region || '—') === r).length} ${esc(t('farms').toLowerCase())} · ${avg(live.filter(f => (f.region || '—') === r))}%</h2>
-        <table class="rp-tbl rp-farms"><thead>${farmHead}</thead><tbody>${farmRows(r)}</tbody></table></section>`).join('')}
-      <p class="rp-note">✓ ${esc(t('ready'))} · 50 = ${esc(t('in_progress'))} (%) · – ${esc(t('not_started'))}</p>
+        <table class="rp-tbl rp-farms">${farmCols}<thead>${farmHead}</thead><tbody>${farmRows(r)}</tbody></table></section>`).join('')}
+      <p class="rp-note">✓ ${esc(t('ready'))} · 50% ${esc(t('in_progress'))} · – ${esc(t('not_started'))}</p>
       </td></tr></tbody><tfoot><tr><td><div class="rp-foot-space"></div></td></tr></tfoot></table>
 
       <footer class="rp-foot"><span>GAZI FIELD · ${esc(t('progress_report'))} · ${esc(dateShort(now))}</span>

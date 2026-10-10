@@ -12,7 +12,7 @@ import { analysisView } from './analysis.js';
 import { clientView, clientFarmView } from './client.js';
 import { progressReportView } from './report.js';
 
-export const APP_VERSION = '0.6.5';
+export const APP_VERSION = '0.6.6';
 
 // [path, view, roles allowed]. Roles: field (worker), manager, client.
 const ROUTES = [
