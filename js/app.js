@@ -12,7 +12,7 @@ import { analysisView } from './analysis.js';
 import { clientView, clientFarmView } from './client.js';
 import { progressReportView } from './report.js';
 
-export const APP_VERSION = '0.6.6';
+export const APP_VERSION = '0.6.7';
 
 // [path, view, roles allowed]. Roles: field (worker), manager, client.
 const ROUTES = [
@@ -50,7 +50,7 @@ function match(path) {
 
 const homeFor = u => ({ field: '#/', manager: '#/manage', supervisor: '#/manage', client: '#/client' }[u.role] || '#/');
 
-let lastPath = null;
+let lastPath = null, lastHash = null;
 async function render() {
   const path = (location.hash.slice(1) || '/').split('?')[0];
   const u = me();
@@ -68,12 +68,12 @@ async function render() {
   if (!out || !out.html) return;
   const root = document.getElementById('app');
   // Don't wipe a field someone is typing in when background data arrives.
-  const typing = root.contains(document.activeElement) && /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName) && path === lastPath;
+  const typing = root.contains(document.activeElement) && /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName) && location.hash === lastHash;   // same screen, same filters
   if (typing) return;
   const keepScroll = path === lastPath ? window.scrollY : 0;
   root.innerHTML = out.html;
   window.scrollTo(0, keepScroll);
-  lastPath = path;
+  lastPath = path; lastHash = location.hash;
   if (out.mount) await out.mount(root);
 }
 
