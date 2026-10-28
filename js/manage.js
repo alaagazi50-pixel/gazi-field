@@ -1,8 +1,8 @@
 // Management: "sees the day in seconds" dashboard and the farm list.
 import { t, getLang } from './i18n.js';
-import { STAGES, dateKey, hhmm, niceDate, farmProgress, farmStatus } from './data.js';
+import { STAGES, dateKey, hhmm, niceDate, farmProgress, farmStatus, materialsOf } from './data.js';
 import { state, me, user, team, teamFarm, farm, reportIssues, markFollowUp, remindTeam, refresh, addFarm, uploadDrawings, pushState, enablePush, testPush, resolveGeneral } from './store.js';
-import { esc, stageName, topbar, timeLabel, progressBar, fail, toast, parseGps, farmTitle, photoImg, videoEl, hydratePhotos } from './ui.js';
+import { esc, stageName, topbar, timeLabel, progressBar, fail, toast, parseGps, farmTitle, photoImg, videoEl, hydratePhotos, materialsTag } from './ui.js';
 
 export function mgrNav(active) {
   const a = (k, href, label) => `<a class="${active === k ? 'on' : ''}" href="${href}">${esc(label)}</a>`;
@@ -175,6 +175,7 @@ export function farmsListView() {
     return `<tr style="${f.status === 'cancelled' ? 'opacity:.55' : ''}"><td class="num"><a href="#/farm/${f.id}">${esc(f.id)}</a>${f.status === 'cancelled' ? `<div><span class="tag warn">${esc(t('cancelled'))}</span></div>` : ''}${f.drawingPhotoId ? '' : ''}</td><td>${esc(f.name || '')}<div class="small muted">${esc(f.region)}</div></td><td>${esc(team(f.teamId).name)}</td>
       <td style="min-width:140px"><div class="row" style="flex-wrap:nowrap"><span style="width:42px">${p}%</span><span style="flex:1">${progressBar(p)}</span></div></td>
       <td><span class="tag ${st === 'completed' ? 'ok' : st === 'in_progress' ? 'amber' : ''}">${esc(t(st))}</span></td>
+      <td>${materialsTag(f)}</td>
       <td class="small">${lr ? esc(timeLabel(lr.submittedAt)) : '—'}</td>
       <td>${open ? `<span class="tag warn">${open}</span>` : ''}</td></tr>`;
   }).join('');
@@ -197,7 +198,7 @@ export function farmsListView() {
           <button class="btn sm" type="submit" style="align-self:flex-start">${esc(t('add_farm'))}</button>
         </form></details>
       <input class="input" data-q placeholder="${esc(t('search'))}" value="${esc(q)}" style="max-width:360px">
-      <div class="card"><div class="tbl-wrap"><table class="tbl"><thead><tr><th>${esc(t('farm'))}</th><th></th><th>${esc(t('team'))}</th><th>${esc(t('progress'))}</th><th></th><th>${esc(t('last_report'))}</th><th>${esc(t('issues'))}</th></tr></thead>
+      <div class="card"><div class="tbl-wrap"><table class="tbl"><thead><tr><th>${esc(t('farm'))}</th><th></th><th>${esc(t('team'))}</th><th>${esc(t('progress'))}</th><th></th><th>🚚 ${esc(t('materials_short'))}</th><th>${esc(t('last_report'))}</th><th>${esc(t('issues'))}</th></tr></thead>
       <tbody>${rows}</tbody></table></div></div>
     </main></div>`,
     mount(root) {
@@ -236,11 +237,11 @@ export function farmsListView() {
 }
 
 function exportCSV() {
-  const head = ['farm', 'region', 'team', 'progress', ...STAGES.map(s => s.id), 'open_issues', 'last_report'];
+  const head = ['farm', 'region', 'team', 'progress', ...STAGES.map(s => s.id), 'materials', 'materials_date', 'open_issues', 'last_report'];
   const lines = [head.join(',')];
   for (const f of state.farms) {
     const lr = state.reports.filter(r => r.farmId === f.id).sort((a, b) => b.submittedAt - a.submittedAt)[0];
-    lines.push([f.id, f.region, f.teamId, farmProgress(f), ...STAGES.map(s => f.stages[s.id]),
+    lines.push([f.id, f.region, f.teamId, farmProgress(f), ...STAGES.map(s => f.stages[s.id]), materialsOf(f).status, materialsOf(f).date || '',
       state.issues.filter(i => i.farmId === f.id && i.status === 'open').length,
       lr ? new Date(lr.submittedAt).toISOString() : ''].join(','));
   }

@@ -309,7 +309,7 @@ video.video { width: 100%; max-height: 320px; border-radius: 10px; background: #
 @media print {
   @page { size: A4 landscape; margin: 10mm 10mm 8mm; }
   body { background: #fff !important; }
-  .noprint, .topbar, header.topbar { display: none !important; }
+  .noprint, .topbar, header.topbar, #toast { display: none !important; }
   .rp-screen { padding: 0 !important; }
   .rp { box-shadow: none; border-radius: 0; margin: 0; padding: 0; max-width: none; }
   .rp-foot { position: fixed; bottom: 0; left: 0; right: 0; height: 17mm; margin: 0; padding-top: 2mm; background: #fff; box-sizing: border-box; }
@@ -328,10 +328,12 @@ video.video { width: 100%; max-height: 320px; border-radius: 10px; background: #
   .rp-farms { font-size: 8px; table-layout: fixed; }
   .rp-farms td, .rp-farms th { padding: 3px 2px; }
   .rp-farms th.rp-st { font-size: 6.5px; width: auto; hyphens: manual; }
-  .rp-farms col.c-code { width: 12mm; } .rp-farms col.c-name { width: 25mm; } .rp-farms col.c-st { width: 12mm; }
+  .rp-farms col.c-code { width: 11mm; } .rp-farms col.c-name { width: 21mm; } .rp-farms col.c-st { width: 11.2mm; }
   .rp-farms col.c-pct { width: 9mm; } .rp-farms col.c-status { width: 21mm; } .rp-farms col.c-date { width: 15mm; }
   .rp-name { max-width: none; overflow-wrap: anywhere; }
   .rp-region { overflow: visible; }
 }
 .daynav { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .daynav input[type=date] { width: auto; min-width: 160px; flex: 0 1 auto; }
+.rp-farms th.rp-mat { background: #e8eef7; } .rp-farms td.c-mat { white-space: nowrap; font-size: .92em; } .rp-part { color: #8a5f06; font-size: .9em; }
+@media print and (orientation: portrait) { .rp-farms col.c-matc { width: 13mm; } }

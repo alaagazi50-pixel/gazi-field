@@ -1,6 +1,6 @@
 // Shared rendering helpers.
 import { t, getLang } from './i18n.js';
-import { hhmm, niceDate } from './data.js';
+import { hhmm, niceDate, materialsOf, ddmmyyyy } from './data.js';
 import { photoURL, photoMeta, pendingCount } from './store.js';
 
 export const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -60,6 +60,14 @@ export function toast(msg) {
 export function photoImg(id, alt = '') {
   return id ? `<img data-photo="${esc(id)}" alt="${esc(alt)}">` : `<div class="noimg">—</div>`;
 }
+// Irrigation materials delivered? (green ✓ + date / amber partly / grey not yet)
+export function materialsTag(f) {
+  const m = materialsOf(f);
+  if (m.status === 'delivered') return `<span class="tag ok">✓ ${esc(t('mat_delivered'))} · ${esc(ddmmyyyy(m.date))}</span>`;
+  if (m.status === 'partial') return `<span class="tag amber">${esc(t('mat_partial'))} · ${esc(ddmmyyyy(m.date))}</span>`;
+  return `<span class="tag">${esc(t('mat_none'))}</span>`;
+}
+
 // <video data-photo="id"> plays the clip (from the phone if not uploaded yet, streamed from the server otherwise).
 export function videoEl(id) {
   return `<video data-photo="${esc(id)}" controls playsinline preload="metadata" class="video"></video>`;

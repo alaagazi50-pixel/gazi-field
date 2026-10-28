@@ -5,7 +5,7 @@
 // when the phone has internet (by the page, or by the service worker when the app is closed).
 import { SUPABASE_URL, SUPABASE_ANON_KEY, USERNAME_DOMAIN, ADMIN_FUNCTION, REMINDER_FUNCTION, VAPID_PUBLIC_KEY } from './config.js';
 import { kvGet, kvSet, kvDel, putPhoto, getPhoto } from './db.js';
-import { photoLabel, shortDate } from './data.js';
+import { photoLabel, shortDate, dateKey } from './data.js';
 import { getLang } from './i18n.js';
 
 export const configured = !!(SUPABASE_URL && SUPABASE_ANON_KEY && window.supabase);
@@ -610,6 +610,11 @@ export async function addFarm({ id, name, region, teamId, lat, lng }) {
 }
 export const saveFarmInfo = (farmId, { name, region, lat, lng }) =>
   run(sb.from('farms').update({ name: name || null, region, lat: lat ?? null, lng: lng ?? null, updated_at: new Date().toISOString() }).eq('id', farmId)).then(refresh);
+export function saveMaterials(farmId, status, date) {
+  const f = farm(farmId);
+  const materials = status === 'none' ? { status: 'none' } : { status, date: date || dateKey(), by: state.me.id, at: new Date().toISOString() };
+  return run(sb.from('farms').update({ details: { ...(f?.details || {}), materials }, updated_at: new Date().toISOString() }).eq('id', farmId)).then(refresh);
+}
 export const setFarmStatus = (farmId, status) => run(sb.from('farms').update({ status }).eq('id', farmId)).then(refresh);
 // Several drawings at once: each file name must contain the farm code (HM-01, HM01, "HM-01 plan.jpg"…).
 export const farmForFile = name => {

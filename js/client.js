@@ -2,7 +2,7 @@
 import { t } from './i18n.js';
 import { STAGES, farmProgress, completion, byFarmCode, byRegion } from './data.js';
 import { state, me, farm, isMgr } from './store.js';
-import { esc, stageName, topbar, progressBar, hydratePhotos, photoImg, videoEl, farmTitle } from './ui.js';
+import { esc, stageName, topbar, progressBar, hydratePhotos, photoImg, videoEl, farmTitle, materialsTag } from './ui.js';
 import { mgrNav } from './manage.js';
 
 const TAG = {
@@ -88,6 +88,7 @@ export function clientFarmView({ farmId }) {
       <div class="eyebrow">${esc(t('client_portal'))}</div>
       <h1 class="h1">${esc(farmTitle(f))}</h1>
       <div class="stack" style="gap:6px"><div class="row"><span class="strong">${p}% ${esc(t('in_progress'))}</span>${tagFor(completion(f))}</div>${progressBar(p)}</div>
+      <div class="card flat row between"><span class="strong">🚚 ${esc(t('irrigation_materials'))}</span>${materialsTag(f)}</div>
       <div class="card flat stack"><div class="eyebrow">${esc(t('stage_status'))}</div><div>${stageRows}</div></div>
       ${photos.length ? `<div class="photos" style="grid-template-columns:repeat(auto-fill,minmax(220px,1fr))">${photos.map(ph => `<div class="ph">
         ${ph.kind === 'video' ? videoEl(ph.id) : `<button class="imgbtn" data-zoom="${ph.id}">${photoImg(ph.id)}</button>`}

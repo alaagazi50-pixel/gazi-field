@@ -1,8 +1,8 @@
 // Farm hub ("Everything about HM16 lives in HM16"), its sub-pages, and the daily report view.
 import { t, getLang, LANGS } from './i18n.js';
-import { STAGES, farmProgress } from './data.js';
-import { state, me, farm, user, team, issue, reportIssues, isMgr as isMgrUser, photoMeta, setPhotoApproved, resolveIssue, saveBoq, saveStages, setDrawing, setFarmTeam, saveFarmInfo, setFarmStatus } from './store.js';
-import { esc, stageName, ICONS, topbar, toast, fail, photoImg, hydratePhotos, pct, timeLabel, progressBar, pickPhoto, parseGps, farmTitle, videoEl } from './ui.js';
+import { STAGES, farmProgress, materialsOf, dateKey } from './data.js';
+import { state, me, farm, user, team, issue, reportIssues, isMgr as isMgrUser, photoMeta, setPhotoApproved, resolveIssue, saveBoq, saveStages, setDrawing, setFarmTeam, saveFarmInfo, setFarmStatus, saveMaterials } from './store.js';
+import { esc, stageName, ICONS, topbar, toast, fail, photoImg, hydratePhotos, pct, timeLabel, progressBar, pickPhoto, parseGps, farmTitle, videoEl, materialsTag } from './ui.js';
 
 const isMgr = () => isMgrUser(me());
 const homeHref = () => (isMgr() ? '#/manage' : '#/');
@@ -48,6 +48,7 @@ export function farmHubView({ farmId }) {
         ${item('issues', 'issues', t('issues'), openIssues)}
       </nav>
       ${detailsCard(f)}
+      <div class="card flat row between"><span class="strong">🚚 ${esc(t('irrigation_materials'))}</span>${materialsTag(f)}</div>
       ${isMgr() && f.status !== 'cancelled' ? `<a class="btn" href="#/work/${esc(f.id)}">＋ ${esc(t('report_with_photos'))}</a>` : ''}
       ${isMgr() ? stageEditor(f) : stageList(f)}
     </main></div>`,
@@ -63,6 +64,11 @@ export function farmHubView({ farmId }) {
         e.preventDefault();
         const v = Object.fromEntries(new FormData(e.target));
         try { const g = parseGps(v.gps); await saveFarmInfo(f.id, { name: v.name.trim(), region: v.region.trim(), lat: g?.lat, lng: g?.lng }); toast(t('saved')); } catch (err) { fail(err); }
+      };
+      root.querySelector('[data-materials]').onsubmit = async e => {
+        e.preventDefault();
+        const v = Object.fromEntries(new FormData(e.target));
+        try { await saveMaterials(f.id, v.status, v.date); toast(t('saved')); } catch (err) { fail(err); }
       };
       root.querySelector('[data-team]').onchange = async ev => {
         try { await setFarmTeam(f.id, ev.target.value); toast(t('saved')); } catch (err) { fail(err); }
@@ -90,6 +96,10 @@ function stageEditor(f) {
         ${state.teams.map(tm => `<option value="${esc(tm.id)}" ${tm.id === f.teamId ? 'selected' : ''}>${esc(tm.name)}</option>`).join('')}</select></label>
     <label class="form"><span class="eyebrow">${esc(t('farm_status'))}</span>
       <select class="input" data-status>${['active', 'cancelled'].map(v => `<option value="${v}" ${f.status === v ? 'selected' : ''}>${esc(t(v))}</option>`).join('')}</select></label>
+    <form data-materials class="form"><span class="eyebrow">🚚 ${esc(t('irrigation_materials'))}</span>
+      <select class="input" name="status">${['none', 'partial', 'delivered'].map(v => `<option value="${v}" ${materialsOf(f).status === v ? 'selected' : ''}>${esc(t('mat_' + v))}</option>`).join('')}</select>
+      <label>${esc(t('delivery_date'))}<input class="input" type="date" name="date" value="${esc(materialsOf(f).date || dateKey())}" max="${dateKey()}"></label>
+      <button class="btn sm" type="submit" style="align-self:flex-start">${esc(t('save'))}</button></form>
     <form data-stages class="stack"><div class="eyebrow">${esc(t('edit_progress'))}</div>
       <div class="stage-edit">${STAGES.map(s => `<label for="st-${s.id}">${esc(stageName(s.id))}${dates[s.id] ? `<br><span class="small muted">${esc(dates[s.id].status === 'ready' ? t('done_on', { d: dates[s.id].date }) : t('since', { d: dates[s.id].date }))}</span>` : ''}</label>
         <select class="input" id="st-${s.id}" name="${s.id}">${opts(f.stages[s.id])}</select>`).join('')}</div>

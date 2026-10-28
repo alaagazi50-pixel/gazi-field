@@ -43,6 +43,11 @@ export function farmStatus(farm) {
   const p = farmProgress(farm);
   return p >= 100 ? 'completed' : p > 0 ? 'in_progress' : 'not_started';
 }
+// Irrigation materials delivered to the farm: a milestone, not a stage, so it does not count in the progress %.
+// status: 'none' | 'partial' | 'delivered'; date: 'YYYY-MM-DD'.
+export const materialsOf = farm => farm?.details?.materials?.status ? farm.details.materials : { status: 'none' };
+export const ddmmyyyy = key => (key ? key.split('-').reverse().join('.') : '');
+
 // Ready apart from electricity (and the handover that needs it): the farm can't run yet.
 const NEEDS_POWER = ['electricity', 'commissioning'];
 export function completion(farm) {
