@@ -1,7 +1,7 @@
 // Client progress report: one printable page (A4 landscape) that the phone or computer saves as PDF.
 // Built only from what the client may see (farms and their stages), so it never shows internal notes or names.
 import { t, getLang } from './i18n.js';
-import { STAGES, farmProgress, completion, byFarmCode, byRegion, hhmm, materialsOf, ddmmyyyy } from './data.js';
+import { STAGES, farmProgress, completion, byFarmCode, byRegion, hhmm, materialsOf, MATERIALS_AFTER } from './data.js';
 import { state } from './store.js';
 import { esc, stageName, topbar } from './ui.js';
 
@@ -12,12 +12,11 @@ const CLIENT = 'NETAFIM';
 const soft = text => esc(text).replace(/([A-Za-zÀ-ÿ]{6})([A-Za-zÀ-ÿ]{5,})/g, '$1&shy;$2');   // the customer this report is made for
 // Materials cell: delivered (date), partly (date), or not yet.
 const matCell = f => {
-  const m = materialsOf(f), d = m.date ? ddmmyyyy(m.date).slice(0, 5) : '';
-  if (m.status === 'delivered') return `<td class="c-ok c-mat">✓ ${d}</td>`;
-  if (m.status === 'partial') return `<td class="c-mid c-mat">${esc(t('mat_partial_short'))} ${d}</td>`;
+  const m = materialsOf(f);
+  if (m.status === 'delivered') return `<td class="c-ok c-mat">✓</td>`;
+  if (m.status === 'partial') return `<td class="c-mid c-mat">${esc(t('mat_partial_short'))}</td>`;
   return `<td class="c-no">–</td>`;
 };
-const MAT_AFTER = 'room_structure';   // the partner asked for it between Room structure and Excavation
 const STATUS = { completed: 'completed', no_power: 'done_no_power', in_progress: 'in_progress', not_started: 'not_started', cancelled: 'cancelled' };
 
 export function progressReportView() {
@@ -42,11 +41,11 @@ export function progressReportView() {
   const cell = v => (v >= 100 ? `<td class="c-ok">✓</td>` : v > 0 ? `<td class="c-mid">${v}%</td>` : `<td class="c-no">–</td>`);
   const farmRows = r => all.filter(f => (f.region || '—') === r && f.status !== 'cancelled').map(f => {
     const st = completion(f);
-    return `<tr><td><b>${esc(f.id)}</b></td><td class="rp-name">${esc(f.name || '')}</td>${STAGES.map(s => cell(f.stages[s.id] || 0) + (s.id === MAT_AFTER ? matCell(f) : '')).join('')}
+    return `<tr><td><b>${esc(f.id)}</b></td><td class="rp-name">${esc(f.name || '')}</td>${STAGES.map(s => cell(f.stages[s.id] || 0) + (s.id === MATERIALS_AFTER ? matCell(f) : '')).join('')}
       <td><b>${farmProgress(f)}%</b></td><td class="st-${st}">${esc(t(STATUS[st]))}</td><td>${dateShort(f.updatedAt)}</td></tr>`;
   }).join('');
-  const farmCols = `<colgroup><col class="c-code"><col class="c-name">${STAGES.map(s => '<col class="c-st">' + (s.id === MAT_AFTER ? '<col class="c-matc">' : '')).join('')}<col class="c-pct"><col class="c-status"><col class="c-date"></colgroup>`;
-  const farmHead = `<tr><th>${esc(t('farm'))}</th><th>${esc(t('name'))}</th>${STAGES.map(s => `<th class="rp-st" title="${esc(stageName(s.id))}">${soft(stageName(s.id))}</th>` + (s.id === MAT_AFTER ? `<th class="rp-st rp-mat">${soft(t('irrigation_materials_delivered'))}</th>` : '')).join('')}
+  const farmCols = `<colgroup><col class="c-code"><col class="c-name">${STAGES.map(s => '<col class="c-st">' + (s.id === MATERIALS_AFTER ? '<col class="c-matc">' : '')).join('')}<col class="c-pct"><col class="c-status"><col class="c-date"></colgroup>`;
+  const farmHead = `<tr><th>${esc(t('farm'))}</th><th>${esc(t('name'))}</th>${STAGES.map(s => `<th class="rp-st" title="${esc(stageName(s.id))}">${soft(stageName(s.id))}</th>` + (s.id === MATERIALS_AFTER ? `<th class="rp-st rp-mat">${soft(t('irrigation_materials_delivered'))}</th>` : '')).join('')}
     <th>%</th><th>${esc(t('status'))}</th><th>${esc(t('last_update'))}</th></tr>`;
 
   return {

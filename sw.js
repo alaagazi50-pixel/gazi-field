@@ -1,5 +1,5 @@
 // Service worker: offline app shell, push reminders, and automatic upload of reports queued offline.
-const CACHE = 'gazi-field-v0.6.8';
+const CACHE = 'gazi-field-v0.6.9';
 const SHELL = [
   './', './index.html', './manifest.webmanifest', './css/app.css',
   './js/app.js', './js/i18n.js', './js/db.js', './js/data.js', './js/store.js', './js/ui.js',
@@ -155,7 +155,8 @@ async function uploadQueued() {
     const res = await fetch(`${cfg.url}/rest/v1/rpc/submit_report`, {
       method: 'POST', headers: { ...H, 'Content-Type': 'application/json' },
       body: JSON.stringify({ p_id: r.id, p_farm: r.farmId, p_date: r.date, p_items: r.items, p_issues: issues.length ? issues : null,
-        p_location: r.location, p_connectivity: r.connectivity, p_submitted_at: new Date(r.submittedAt).toISOString() }),
+        p_location: r.location, p_connectivity: r.connectivity, p_submitted_at: new Date(r.submittedAt).toISOString(),
+        ...(r.materials ? { p_materials: r.materials } : {}) }),
     });
     if (!res.ok) {
       const text = await res.text();

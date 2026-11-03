@@ -337,3 +337,4 @@ video.video { width: 100%; max-height: 320px; border-radius: 10px; background: #
 .daynav input[type=date] { width: auto; min-width: 160px; flex: 0 1 auto; }
 .rp-farms th.rp-mat { background: #e8eef7; } .rp-farms td.c-mat { white-space: nowrap; font-size: .92em; } .rp-part { color: #8a5f06; font-size: .9em; }
 @media print and (orientation: portrait) { .rp-farms col.c-matc { width: 13mm; } }
+.matphotos { display: flex; flex-wrap: wrap; gap: 10px; } .matphotos .photo-preview { max-width: 140px; }

@@ -77,6 +77,7 @@ create policy "gazi photos upload" on storage.objects for insert to authenticate
 -- so reports queued on phones by older versions of the app still go through.
 -- ---------------------------------------------------------------------------
 drop function if exists public.submit_report(uuid, text, date, jsonb, jsonb, jsonb, jsonb, timestamptz);
+drop function if exists public.submit_report(uuid, text, date, jsonb, jsonb, jsonb, timestamptz, jsonb, jsonb, text);
 drop function if exists public.submit_report(uuid, text, date, jsonb, jsonb, jsonb, timestamptz, jsonb, jsonb);
 create function public.submit_report(
   p_id uuid, p_farm text, p_date date, p_items jsonb,

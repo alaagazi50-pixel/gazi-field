@@ -51,7 +51,7 @@ export const isMgr = u => ['manager', 'supervisor'].includes(u?.role);
 const ms = v => (v ? new Date(v).getTime() : null);
 const mapProfile = p => ({ id: p.id, name: p.full_name, username: p.username, role: p.role === 'worker' ? 'field' : p.role, teamId: p.team_id, lang: p.lang, active: p.active });
 const mapFarm = f => ({ id: f.id, name: f.name || '', region: f.region, gps: { lat: f.lat ?? 0, lng: f.lng ?? 0 }, teamId: f.team_id, stages: f.stages || {}, boq: f.boq || [], drawingPhotoId: f.drawing_photo_id, details: f.details || {}, status: f.status || 'active', updatedAt: ms(f.updated_at) });
-const mapReport = r => ({ id: r.id, farmId: r.farm_id, teamId: r.team_id, userId: r.user_id, date: r.date, submittedAt: ms(r.submitted_at), issueId: r.issue_id, items: r.items, location: r.location, connectivity: r.connectivity });
+const mapReport = r => ({ id: r.id, farmId: r.farm_id, teamId: r.team_id, userId: r.user_id, date: r.date, submittedAt: ms(r.submitted_at), issueId: r.issue_id, items: r.items, location: r.location, connectivity: r.connectivity, materials: r.materials ?? null });
 const mapIssue = i => ({ id: i.id, farmId: i.farm_id, reportId: i.report_id ?? null, urgent: !!i.urgent, stage: i.stage, category: i.category, note: i.note, lang: i.lang, photoId: i.photo_id, reportedBy: i.reported_by, teamId: i.team_id, at: ms(i.at), status: i.status, resolvedAt: ms(i.resolved_at) });
 const mapPhoto = p => ({ id: p.id, reportId: p.report_id ?? null, issueId: p.issue_id ?? null, generalId: p.general_id ?? null, label: p.label, takenAt: ms(p.taken_at), farmId: p.farm_id, stage: p.stage, progress: p.progress, kind: p.kind, userId: p.user_id, teamId: p.team_id, loc: p.loc, approved: p.approved, path: p.path });
 const mapGeneral = g => ({ id: g.id, userId: g.user_id, teamId: g.team_id, at: ms(g.at), note: g.note, lang: g.lang, photoId: g.photo_id, status: g.status, resolvedAt: ms(g.resolved_at) });
@@ -352,7 +352,7 @@ async function uploadPhoto(rec) {
   const { error } = await sb.from('photos').insert({
     id: rec.id, farm_id: rec.farmId, stage: rec.stage === 'drawing' ? null : rec.stage, progress: rec.progress, kind: rec.kind,
     label: rec.label, path: rec.path, taken_at: new Date(rec.takenAt).toISOString(), user_id: rec.userId, team_id: rec.teamId, loc: rec.loc,
-    ...(rec.kind === 'video' ? { report_id: rec.reportId, issue_id: rec.issueId, general_id: rec.generalId ?? null } : {}),
+    ...(rec.kind === 'video' ? { report_id: rec.reportId, issue_id: rec.issueId, general_id: rec.generalId ?? null } : rec.reportId ? { report_id: rec.reportId } : {}),
   });
   if (error && error.code !== '23505') throw error;
   state.pendingPhotos = state.pendingPhotos.filter(p => p.id !== rec.id);
@@ -374,7 +374,7 @@ function viaImg(file) {
 // ---------- field: daily report outbox ----------
 export async function queueReport(report, issues, videoIds = []) {
   attachVideos(videoIds, { reportId: report.id });
-  const photoIds = [...report.items.map(i => i.photoId), ...issues.map(i => i.photoId)].filter(Boolean);
+  const photoIds = [...report.items.map(i => i.photoId), ...issues.map(i => i.photoId), ...(report.materialsPhotos || [])].filter(Boolean);
   state.outbox.push({ id: report.id, report, issues, photoIds, queuedAt: Date.now() });
   await rememberFarm(report.farmId);
   overlayLocal();
@@ -474,6 +474,7 @@ export async function sync() {
       const { error } = await sb.rpc('submit_report', {
         p_id: r.id, p_farm: r.farmId, p_date: r.date, p_items: r.items, p_issues: issues.length ? issues : null,
         p_location: r.location, p_connectivity: r.connectivity, p_submitted_at: new Date(r.submittedAt).toISOString(),
+        ...(r.materials ? { p_materials: r.materials } : {}),   // only sent when it changes (works with older servers otherwise)
       });
       if (error) {
         if (/ALREADY_SUBMITTED|Only field workers|Not allowed|Unknown farm|was not reviewed|Invalid progress|Photo missing/.test(error.message)) {

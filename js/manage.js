@@ -83,7 +83,7 @@ export async function dashboardView() {
   const reportRows = todays.map(r => {
     const changes = r.items.filter(i => i.action === 'updated').map(i => `${stageName(i.stage)} ${i.prev} → ${i.next}%`).join(' · ');
     const n = reportIssues(r).length;
-    return `<tr><td class="num">${esc(fTitle(r.farmId))}</td><td>${esc(changes || t('no_changes'))}${n ? ` <span class="tag warn">${esc(t('issues'))} · ${n}</span>` : ''}</td>
+    return `<tr><td class="num">${esc(fTitle(r.farmId))}</td><td>${esc(changes || t('no_changes'))}${r.materials ? ` <span class="tag ${r.materials === 'delivered' ? 'ok' : 'amber'}">🚚 ${esc(t('mat_' + r.materials))}</span>` : ''}${n ? ` <span class="tag warn">${esc(t('issues'))} · ${n}</span>` : ''}</td>
       <td>${esc(user(r.userId)?.name)}${r.teamId ? ` <span class="small muted">(${esc(team(r.teamId).name)})</span>` : ''} · ${esc(timeLabel(r.submittedAt))}
         ${r.location && !r.location.verified ? `<span class="tag warn">GPS</span>` : ''}</td>
       <td><a class="btn xs" href="#/report/${r.id}">${esc(t('review'))}</a></td></tr>`;

@@ -1,6 +1,7 @@
 -- GAZI FIELD v0.6.0 (migration 006): managers and supervisors can submit daily reports too
 -- (same steps and photos as workers). They have no team, so they never show as 'not reported'.
 -- Supabase → SQL Editor → New query → paste → Run. Safe to run again.
+drop function if exists public.submit_report(uuid, text, date, jsonb, jsonb, jsonb, timestamptz, jsonb, jsonb, text);
 drop function if exists public.submit_report(uuid, text, date, jsonb, jsonb, jsonb, timestamptz, jsonb, jsonb);
 create function public.submit_report(
   p_id uuid, p_farm text, p_date date, p_items jsonb,

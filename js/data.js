@@ -30,7 +30,7 @@ export function niceDate(ms, lang) {
   return new Date(ms).toLocaleDateString(lang === 'ar' ? 'ar' : lang === 'pt' ? 'pt-PT' : 'en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
 }
 export function photoLabel(farmId, stageId, progress, ms) {
-  const code = STAGES.find(s => s.id === stageId)?.code || 'ISSUE';
+  const code = STAGES.find(s => s.id === stageId)?.code || (stageId === 'materials' ? 'MATERIALS' : 'ISSUE');
   const p = progress == null ? '' : ` · ${String(progress).padStart(3, '0')}`;
   return `${farmId} · ${code}${p} · ${shortDate(ms)}`;
 }
@@ -45,6 +45,8 @@ export function farmStatus(farm) {
 }
 // Irrigation materials delivered to the farm: a milestone, not a stage, so it does not count in the progress %.
 // status: 'none' | 'partial' | 'delivered'; date: 'YYYY-MM-DD'.
+export const MATERIALS_AFTER = 'room_structure';   // asked about (and shown in the PDF) right after this stage
+export const MAT_ORDER = ['none', 'partial', 'delivered'];   // a team leader can only move it forward
 export const materialsOf = farm => farm?.details?.materials?.status ? farm.details.materials : { status: 'none' };
 export const ddmmyyyy = key => (key ? key.split('-').reverse().join('.') : '');
 

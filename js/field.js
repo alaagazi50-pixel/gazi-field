@@ -1,9 +1,9 @@
 // Field worker screens: choose a farm, the farm screen, and the daily update flow.
 import { t, getLang } from './i18n.js';
-import { STAGES, CATEGORIES, STEP, LOCATION_RADIUS_KM, dateKey, hhmm, farmProgress, distanceKm } from './data.js';
+import { STAGES, CATEGORIES, STEP, LOCATION_RADIUS_KM, dateKey, hhmm, farmProgress, distanceKm, MATERIALS_AFTER, MAT_ORDER, materialsOf } from './data.js';
 import { state, save, me, farm, team, reportFor, reportIssues, savePhoto, saveVideo, discardVideo, VIDEO_MAX_MB, photoMeta, queueReport, queueIssue, newId, dismissFailed,
   rememberFarm, activeFarms, queueGeneral, isMgr } from './store.js';
-import { esc, stageName, ICONS, topbar, photoImg, hydratePhotos, pct, getPosition, pickPhoto, progressBar, farmTitle, toast, fail, pickVideo, videoEl } from './ui.js';
+import { esc, stageName, ICONS, topbar, photoImg, hydratePhotos, pct, getPosition, pickPhoto, progressBar, farmTitle, toast, fail, pickVideo, videoEl, materialsTag } from './ui.js';
 
 const go = h => { location.hash = h; };
 let nearPos = null;        // set by "Near me": farms are then sorted by distance (GPS works without signal)
@@ -186,15 +186,20 @@ export function updateView({ farmId }) {
   const f = farm(farmId), u = me();
   if (!f || reportFor(f.id, dateKey())) { go(f ? `#/work/${f.id}` : '#/'); return { html: '' }; }
   const d = getDraft(f);
-  const n = STAGES.length;
+  const n = STAGES.length + 1;   // 9 stages + irrigation materials
+  const matIdx = STAGES.findIndex(s => s.id === MATERIALS_AFTER);
+  const stepNo = idx => idx + 1 + (idx > matIdx ? 1 : 0);
+  const matNow = materialsOf(f).status;
+  d.matPhotos ||= [];
   const cur = d.items[d.idx];
-  const photoCount = d.items.filter(i => i.photoId).length + d.issues.filter(i => i.photoId).length;
+  const photoCount = d.items.filter(i => i.photoId).length + d.issues.filter(i => i.photoId).length + (d.matPhotos || []).length;
 
   const to = (step, patch = {}) => { d.trail.push({ step: d.step, idx: d.idx }); Object.assign(d, { step }, patch); commit(); };
   const commit = () => save().then(() => window.dispatchEvent(new Event('rerender')));
   const nextStage = () => {
     if (d.returnToSummary) return to('summary', { returnToSummary: false });
-    if (d.idx < n - 1) to('stage', { idx: d.idx + 1, pending: null });
+    if (d.idx === matIdx) return to('materials');
+    if (d.idx < STAGES.length - 1) to('stage', { idx: d.idx + 1, pending: null });
     else to('issue');
   };
   const issueCardHtml = (i, k, removable) => `<div class="card flat row between" style="gap:10px;align-items:flex-start">
@@ -209,15 +214,16 @@ export function updateView({ farmId }) {
       body = `<div class="h2">${esc(farmTitle(f))}</div>
         <div class="eyebrow">${esc(t('todays_update'))}</div>
         <div class="h2 upper" style="font-size:22px">${n} ${esc(t('items_to_review'))}</div>
-        <ul class="list">${STAGES.map(s => `<li>${esc(stageName(s.id))}<span class="r muted small">${pct(f.stages[s.id] || 0)}</span></li>`).join('')}</ul>
+        <ul class="list">${STAGES.map(s => `<li>${esc(stageName(s.id))}<span class="r muted small">${pct(f.stages[s.id] || 0)}</span></li>`
+          + (s.id === MATERIALS_AFTER ? `<li>🚚 ${esc(t('irrigation_materials_delivered'))}<span class="r small">${materialsTag(f)}</span></li>` : '')).join('')}</ul>
         <span class="spacer"></span>
         <button class="btn" data-act="start">${esc(t('start'))}</button>
         <div class="row"><span class="pill outline">${esc(t('works_offline'))}</span><span class="pill outline">${esc(t('syncs_auto'))}</span></div>`;
       break;
 
     case 'stage': {
-      progressW = (d.idx / n) * 100;
-      const head = `<div class="stepcount">${d.idx + 1} / ${n} · ${esc(stageName(cur.stage).toUpperCase())}</div>`;
+      progressW = (stepNo(d.idx) - 1) / n * 100;
+      const head = `<div class="stepcount">${stepNo(d.idx)} / ${n} · ${esc(stageName(cur.stage).toUpperCase())}</div>`;
       if (cur.prev >= 100) {
         body = `${head}<div class="small upper">${esc(t('current_progress'))}</div><p class="big">100%</p><span class="spacer"></span>
           <button class="btn" data-act="confirm">${esc(t('confirm'))}</button>`;
@@ -231,6 +237,24 @@ export function updateView({ farmId }) {
           <button class="btn ghost" data-act="nochange">${esc(t('no_change'))}</button>
           <button class="btn" data-act="update">${esc(t('update_progress'))}</button>`;
       }
+      break;
+    }
+
+    case 'materials': {
+      progressW = (matIdx + 1) / n * 100;
+      const pick = d.materials || matNow;
+      const opt = v => `<button class="btn ${pick === v ? '' : 'ghost'}" data-mat="${v}" ${MAT_ORDER.indexOf(v) < MAT_ORDER.indexOf(matNow) ? 'disabled' : ''}>${v === pick ? '✓ ' : ''}${esc(t('mat_' + v))}</button>`;
+      body = `<div class="stepcount">${matIdx + 2} / ${n} · 🚚 ${esc(t('irrigation_materials').toUpperCase())}</div>
+        <div class="small upper">${esc(t('current_status'))}</div><div>${materialsTag(f)}</div><hr>
+        <p class="question">${esc(t('mat_question'))}</p>
+        ${matNow === 'delivered' ? '' : MAT_ORDER.map(opt).join('')}
+        ${pick !== 'none' ? `<div class="eyebrow">📷 ${esc(t('mat_photos'))} <span class="muted">(${esc(t('optional'))})</span></div>
+          <div class="matphotos">${d.matPhotos.map(id => `<div class="vidrow"><button class="imgbtn" data-zoom="${id}" style="border:0;padding:0;background:none">${photoImg(id).replace('<img', '<img class="photo-preview"')}</button>
+            <button class="linkbtn" data-rmmat="${esc(id)}">${esc(t('remove'))}</button></div>`).join('')}</div>
+          <div class="btn-row"><button class="btn ghost sm" data-act="mcamera" style="width:100%">${ICONS.camera} ${esc(t('take_photo'))}</button>
+            <button class="btn ghost sm" data-act="mgallery" style="width:100%">${esc(t('choose_from_phone'))}</button></div>` : ''}
+        <span class="spacer"></span>
+        <button class="btn" data-act="matdone">${esc(matNow === 'delivered' ? t('confirm') : t('continue'))}</button>`;
       break;
     }
 
@@ -300,7 +324,11 @@ export function updateView({ farmId }) {
         else if (it.prev === 0) { val = `<span style="font-weight:400">${esc(t('not_started'))}</span>`; }
         else { val = `${it.prev}%`; note = t('no_change'); }
         if (blocked.has(it.stage) && it.action !== 'updated') note = t('waiting');
-        return `<tr data-edit="${i}" style="cursor:pointer"><td>${esc(stageName(it.stage))}</td><td class="num">${val}</td><td>${esc(note)}</td></tr>`;
+        const row = `<tr data-edit="${i}" style="cursor:pointer"><td>${esc(stageName(it.stage))}</td><td class="num">${val}</td><td>${esc(note)}</td></tr>`;
+        if (it.stage !== MATERIALS_AFTER) return row;
+        const m = d.materials || matNow;
+        return row + `<tr data-editmat style="cursor:pointer"><td>🚚 ${esc(t('irrigation_materials'))}</td><td class="num">${esc(t('mat_' + m))}</td>
+          <td>${m !== matNow ? '✓' : ''}${d.matPhotos.length ? ` 📷 ${d.matPhotos.length}` : ''}</td></tr>`;
       }).join('');
       const loc = d.location;
       const locLine = !loc ? t('checking_location')
@@ -311,7 +339,7 @@ export function updateView({ farmId }) {
           ${d.issues.map(i => `<tr data-issues style="cursor:pointer"><td>${esc(t('issue_reported'))}</td><td>${esc(t('cat_' + i.category))}</td><td>${i.photoId ? esc(t('photo_ok')) : ''}</td></tr>`).join('')}
         </tbody></table></div>
         <button class="linkbtn" data-act="editissues" style="align-self:flex-start">${esc(d.issues.length ? t('edit_problems') : t('report_issue'))}</button>
-        <div><div class="strong">${d.items.filter(i => i.action).length} / ${n} ${esc(t('reviewed'))} · ${photoCount} ${esc(photoCount === 1 ? t('photo_1') : t('photos_n'))}</div>
+        <div><div class="strong">${d.items.filter(i => i.action).length + (d.matDone ? 1 : 0)} / ${n} ${esc(t('reviewed'))} · ${photoCount} ${esc(photoCount === 1 ? t('photo_1') : t('photos_n'))}</div>
           <div style="${loc && !loc.verified ? 'color:var(--red)' : ''}">${esc(locLine)}</div></div>
         <span class="spacer"></span>
         <button class="btn" data-act="submit">${esc(t('submit_day'))}</button>`;
@@ -352,6 +380,19 @@ export function updateView({ farmId }) {
         photoMeta(d.pendingPhoto).progress = d.pending;
         nextStage();
       });
+
+      // irrigation materials
+      root.querySelectorAll('[data-mat]').forEach(b => b.onclick = () => { d.materials = b.dataset.mat; commit(); });
+      const matMeta = () => ({ stage: 'materials', progress: null, kind: 'progress' });
+      on('mcamera', () => capture(true, matMeta(), id => { d.matPhotos.push(id); }));
+      on('mgallery', () => capture(false, matMeta(), id => { d.matPhotos.push(id); }));
+      root.querySelectorAll('[data-rmmat]').forEach(b => b.onclick = () => { d.matPhotos = d.matPhotos.filter(x => x !== b.dataset.rmmat); commit(); });
+      on('matdone', () => {
+        d.matDone = true;
+        if (d.returnToSummary) return to('summary', { returnToSummary: false });
+        to('stage', { idx: matIdx + 1, pending: null });
+      });
+      root.querySelectorAll('[data-editmat]').forEach(r => r.onclick = () => to('materials', { returnToSummary: true }));
 
       // problems: as many as needed
       on('noissue', () => { d.issues = []; d.issuesDone = true; to('summary'); });
@@ -431,10 +472,13 @@ async function submit(f, u, d) {
     location: d.location && { lat: d.location.lat, lng: d.location.lng, acc: d.location.acc, distKm: d.location.distKm, verified: !!d.location.verified },
     connectivity: null,
   };
+  const now_ = materialsOf(f).status;
+  if (d.materials && MAT_ORDER.indexOf(d.materials) > MAT_ORDER.indexOf(now_)) report.materials = d.materials;
+  report.materialsPhotos = (d.matPhotos || []).slice();
   const lang = getLang();
   const issues = d.issues.map(i => ({ stage: i.stage, category: i.category, note: i.note, photoId: i.photoId, lang }));
   delete state.drafts[d.key];
-  await queueReport(report, issues);
+  await queueReport(report, issues, report.materialsPhotos);
   location.hash = `#/done/${report.id}`;
 }
 

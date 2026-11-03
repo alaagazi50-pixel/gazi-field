@@ -307,7 +307,7 @@ export function reportView({ reportId }) {
     return `<tr><td>${esc(stageName(i.stage))}</td><td class="num">${val}</td><td>${esc(note)}</td></tr>`;
   }).join('');
   const photoIds = [...r.items.map(i => i.photoId), ...issues.map(i => i.photoId)].filter(Boolean);
-  const photos = [...photoIds.map(photoMeta).filter(Boolean), ...state.photos.filter(p => p.kind === 'video' && p.reportId === r.id)];
+  const photos = [...new Set([...photoIds.map(photoMeta).filter(Boolean), ...state.photos.filter(p => p.reportId === r.id)])];
   const loc = r.location;
   const locLine = !loc ? t('location_unavailable') : loc.verified ? t('location_verified') : loc.distKm != null ? t('location_far', { km: loc.distKm.toFixed(1) }) : t('location_unavailable');
 
@@ -319,7 +319,8 @@ export function reportView({ reportId }) {
       <div class="grid ${mgr ? 'c2' : ''} stack">
         <div class="card flat"><div class="tbl-wrap"><table class="tbl"><tbody>${rows}</tbody></table></div>
           <div style="margin-top:12px"><div class="strong">${r.items.length} / ${r.items.length} ${esc(t('reviewed'))} · ${photos.length} ${esc(photos.length === 1 ? t('photo_1') : t('photos_n'))}</div>
-          <div style="${loc && !loc.verified ? 'color:var(--red)' : ''}">${esc(locLine)}</div></div></div>
+          <div style="${loc && !loc.verified ? 'color:var(--red)' : ''}">${esc(locLine)}</div>
+          ${r.materials ? `<div class="strong">🚚 ${esc(t('irrigation_materials'))}: ${esc(t('mat_' + r.materials))}</div>` : ''}</div></div>
         <div class="stack">
           ${issues.map(i => issueCard(i, { manage: mgr && !i.pending })).join('')}
         </div>

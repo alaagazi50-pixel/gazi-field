@@ -24,6 +24,7 @@ alter table public.issues add column if not exists urgent boolean not null defau
 -- ---------------------------------------------------------------------------
 -- submit_report: same as v0.4, over the 9 stages; cancelled farms refused.
 -- ---------------------------------------------------------------------------
+drop function if exists public.submit_report(uuid, text, date, jsonb, jsonb, jsonb, timestamptz, jsonb, jsonb, text);
 drop function if exists public.submit_report(uuid, text, date, jsonb, jsonb, jsonb, timestamptz, jsonb, jsonb);
 create function public.submit_report(
   p_id uuid, p_farm text, p_date date, p_items jsonb,

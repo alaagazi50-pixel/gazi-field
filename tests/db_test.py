@@ -223,6 +223,27 @@ check('supervisor changes accounts', as_('sup', "update profiles set lang='pt' w
 check('supervisor creates teams', raises('sup', "insert into teams (id, name) values ('Z', 'Team Z')") is None)
 check('manager still runs farms (progress correction)', as_('mgr', "update farms set name = 'Test' where id = 'HM17'") == 1)
 
+# --- irrigation materials reported with the daily report (migration 009) ---
+noch = json.dumps([{'stage': s, 'action': 'no_change'} for s in STAGES])
+mcall = call.replace("p_issues => %s::jsonb)", "p_issues => %s::jsonb, p_materials => %s)")
+mat = lambda f: ex("select details->'materials'->>'status' from farms where id = %s", (f,)).fetchone()[0]
+m1 = str(uuid.uuid4())
+check('team leader reports materials partly delivered', as_('jamal', mcall, (m1, 'HM02', noch, None, 'partial'))[0][0] is not None and mat('HM02') == 'partial')
+check('the report remembers it', ex("select materials from reports where id = %s", (m1,)).fetchone()[0] == 'partial')
+ex("delete from reports where id = %s", (m1,))
+m2 = str(uuid.uuid4())
+check('then delivered', as_('paulo', mcall, (m2, 'HM02', noch, None, 'delivered'))[0][0] is not None and mat('HM02') == 'delivered')
+ex("delete from reports where id = %s", (m2,))
+m3 = str(uuid.uuid4())
+as_('jamal', mcall, (m3, 'HM02', noch, None, 'partial'))
+check('never goes backwards (delivered stays delivered)', mat('HM02') == 'delivered' and ex("select materials from reports where id = %s", (m3,)).fetchone()[0] is None)
+ex("delete from reports where id = %s", (m3,))
+e = raises('jamal', mcall, (str(uuid.uuid4()), 'HM02', noch, None, 'lots'))
+check('invalid materials value refused', e and 'Invalid materials' in e, e)
+m4 = str(uuid.uuid4())
+check('reports without materials still work (older app versions)', as_('jamal', call, (m4, 'HM02', noch, None))[0][0] is not None)
+ex("delete from reports where id = %s", (m4,))
+
 # --- general reports (not about one farm) ---
 g1, g2 = str(uuid.uuid4()), str(uuid.uuid4())
 gins = "insert into general_reports (id, note, user_id) values (%s, %s, %s)"
