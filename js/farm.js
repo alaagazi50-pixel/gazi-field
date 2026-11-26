@@ -276,6 +276,8 @@ export function issueCard(i, { manage = false } = {}) {
     ${i.note ? `<p class="note-quote" dir="auto">“${esc(i.note)}”</p>` : ''}
     <div class="row small muted"><span>${esc(t('original', { l: LANGS[i.lang] || i.lang }))}</span>${tr}</div>
     ${i.photoId ? `<button class="imgbtn" data-zoom="${i.photoId}" style="border:0;padding:0;background:none;max-width:220px">${photoImg(i.photoId).replace('<img', '<img class="photo-preview"')}</button>` : ''}
+    ${(() => { const more = state.photos.filter(p => p.issueId === i.id && p.kind !== 'video' && p.id !== i.photoId);
+      return more.length ? `<div class="matphotos">${more.map(p => `<button class="imgbtn" data-zoom="${p.id}" style="border:0;padding:0;background:none">${photoImg(p.id).replace('<img', '<img class="photo-preview"')}</button>`).join('')}</div>` : ''; })()}
     ${state.photos.filter(p => p.kind === 'video' && p.issueId === i.id).map(p => `<div class="vidrow">${videoEl(p.id)}</div>`).join('')}
     <div class="small muted">${esc(t('reported_by', { n: user(i.reportedBy)?.name || '—', t: timeLabel(i.at) }))}</div>
     ${manage && i.status === 'open' ? `<button class="btn sm" data-resolve="${i.id}">${esc(t('resolve'))}</button>` : ''}

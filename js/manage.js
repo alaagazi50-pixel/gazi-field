@@ -92,12 +92,13 @@ export async function dashboardView() {
   const openGenerals = state.generals.filter(g => !g.pending && (past ? onDay(g.at) : g.status === 'open')).sort((a, b) => b.at - a.at);
   const generalCards = openGenerals.map(g => {
     const vids = state.photos.filter(p => p.kind === 'video' && p.generalId === g.id);
+    const pics = state.photos.filter(p => p.kind !== 'video' && p.generalId === g.id && p.id !== g.photoId);
     const tr = `<a class="small" target="_blank" rel="noopener" href="https://translate.google.com/?sl=auto&tl=${getLang()}&op=translate&text=${encodeURIComponent(g.note)}">${esc(t('translate'))}</a>`;
     return `<div class="card flat stack" style="gap:8px">
       <div class="row between"><span class="small"><strong>${esc(user(g.userId)?.name || '—')}</strong>${g.teamId ? ` <span class="muted">(${esc(team(g.teamId).name)})</span>` : ''} · ${esc(timeLabel(g.at))}</span>
         ${g.status === 'open' ? `<button class="btn xs" data-general="${esc(g.id)}">${esc(t('mark_handled'))}</button>` : `<span class="tag ok">${esc(t('handled'))}</span>`}</div>
       <p class="note-quote" dir="auto" style="margin:0;white-space:pre-wrap">${esc(g.note)}</p>${tr}
-      ${g.photoId ? `<button class="imgbtn" data-zoom="${g.photoId}" style="border:0;padding:0;background:none;max-width:220px">${photoImg(g.photoId).replace('<img', '<img class="photo-preview"')}</button>` : ''}
+      ${[g.photoId, ...pics.map(p => p.id)].filter(Boolean).length ? `<div class="matphotos">${[g.photoId, ...pics.map(p => p.id)].filter(Boolean).map(id => `<button class="imgbtn" data-zoom="${id}" style="border:0;padding:0;background:none;max-width:220px">${photoImg(id).replace('<img', '<img class="photo-preview"')}</button>`).join('')}</div>` : ''}
       ${vids.map(p => `<div class="vidrow">${videoEl(p.id)}</div>`).join('')}</div>`;
   }).join('');
   const section = (title, body) => `<div class="card stack"><h2 class="h3">${esc(title)}</h2>${body}</div>`;

@@ -29,8 +29,8 @@ export function shortDate(ms) {
 export function niceDate(ms, lang) {
   return new Date(ms).toLocaleDateString(lang === 'ar' ? 'ar' : lang === 'pt' ? 'pt-PT' : 'en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
 }
-export function photoLabel(farmId, stageId, progress, ms) {
-  const code = STAGES.find(s => s.id === stageId)?.code || (stageId === 'materials' ? 'MATERIALS' : 'ISSUE');
+export function photoLabel(farmId, stageId, progress, ms, codeOverride) {
+  const code = codeOverride || STAGES.find(s => s.id === stageId)?.code || (stageId === 'materials' ? 'MATERIALS' : 'ISSUE');
   const p = progress == null ? '' : ` · ${String(progress).padStart(3, '0')}`;
   return `${farmId} · ${code}${p} · ${shortDate(ms)}`;
 }

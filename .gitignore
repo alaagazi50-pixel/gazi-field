@@ -11,3 +11,9 @@ project plans/
 private/
 *.xlsx
 *.kmz
+
+# AfriTrack is a separate app with its own repository
+AfriTrack/
+
+# GOS is confidential and has its own private repository
+GOS/

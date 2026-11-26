@@ -3,7 +3,7 @@ import { t, getLang } from './i18n.js';
 import { STAGES, CATEGORIES, STEP, LOCATION_RADIUS_KM, dateKey, hhmm, farmProgress, distanceKm, MATERIALS_AFTER, MAT_ORDER, materialsOf } from './data.js';
 import { state, save, me, farm, team, reportFor, reportIssues, savePhoto, saveVideo, discardVideo, VIDEO_MAX_MB, photoMeta, queueReport, queueIssue, newId, dismissFailed,
   rememberFarm, activeFarms, queueGeneral, isMgr } from './store.js';
-import { esc, stageName, ICONS, topbar, photoImg, hydratePhotos, pct, getPosition, pickPhoto, progressBar, farmTitle, toast, fail, pickVideo, videoEl, materialsTag } from './ui.js';
+import { esc, stageName, ICONS, topbar, photoImg, hydratePhotos, pct, getPosition, pickPhoto, progressBar, farmTitle, toast, fail, pickVideo, videoEl, materialsTag, pickPhotos } from './ui.js';
 
 const go = h => { location.hash = h; };
 let nearPos = null;        // set by "Near me": farms are then sorted by distance (GPS works without signal)
@@ -158,7 +158,7 @@ export async function workView({ farmId }) {
 }
 
 // ---------------- Daily update flow ----------------
-const emptyIssue = () => ({ category: null, stage: null, note: '', photoId: null });
+const emptyIssue = () => ({ category: null, stage: null, note: '', photos: [], videos: [] });
 function getDraft(f) {
   const key = `${f.id}|${dateKey()}`;
   if (!state.drafts[key]) {
@@ -192,7 +192,10 @@ export function updateView({ farmId }) {
   const matNow = materialsOf(f).status;
   d.matPhotos ||= [];
   const cur = d.items[d.idx];
-  const photoCount = d.items.filter(i => i.photoId).length + d.issues.filter(i => i.photoId).length + (d.matPhotos || []).length;
+  d.reportMedia = upgradeMedia(d.reportMedia || { photos: [], videos: d.videoIds || [] });
+  d.issues.forEach(upgradeMedia);
+  const photoCount = d.items.reduce((n, i) => n + (i.photoId ? 1 : 0) + (i.extra || []).length, 0)
+    + d.issues.reduce((n, i) => n + i.photos.length, 0) + (d.matPhotos || []).length + d.reportMedia.photos.length;
 
   const to = (step, patch = {}) => { d.trail.push({ step: d.step, idx: d.idx }); Object.assign(d, { step }, patch); commit(); };
   const commit = () => save().then(() => window.dispatchEvent(new Event('rerender')));
@@ -202,11 +205,12 @@ export function updateView({ farmId }) {
     if (d.idx < STAGES.length - 1) to('stage', { idx: d.idx + 1, pending: null });
     else to('issue');
   };
-  const issueCardHtml = (i, k, removable) => `<div class="card flat row between" style="gap:10px;align-items:flex-start">
-    ${i.photoId ? `<button class="imgbtn" data-zoom="${i.photoId}" style="border:0;padding:0;background:none;width:64px">${photoImg(i.photoId).replace('<img', '<img style="width:64px;height:64px;object-fit:cover;border-radius:8px"')}</button>` : ''}
-    <div style="flex:1;min-width:0"><strong>${k + 1}. ${esc(t('cat_' + i.category))}</strong> <span class="muted small">· ${esc(stageName(i.stage))}</span>
+  const issueCardHtml = (i, k, removable) => { const ph = (i.photos || [])[0] || i.photoId, nm = (i.photos || []).length + (i.videos || []).length;
+    return `<div class="card flat row between" style="gap:10px;align-items:flex-start">
+    ${ph ? `<button class="imgbtn" data-zoom="${ph}" style="border:0;padding:0;background:none;width:64px">${photoImg(ph).replace('<img', '<img style="width:64px;height:64px;object-fit:cover;border-radius:8px"')}</button>` : ''}
+    <div style="flex:1;min-width:0"><strong>${k + 1}. ${esc(t('cat_' + i.category))}</strong> <span class="muted small">· ${esc(stageName(i.stage))}${nm > 1 ? ` · 📷 ${nm}` : ''}</span>
       ${i.note ? `<div class="small" dir="auto">${esc(i.note)}</div>` : ''}</div>
-    ${removable ? `<button class="linkbtn" data-remove="${k}" style="color:var(--red)">${esc(t('remove'))}</button>` : ''}</div>`;
+    ${removable ? `<button class="linkbtn" data-remove="${k}" style="color:var(--red)">${esc(t('remove'))}</button>` : ''}</div>`; };
 
   let body = '', progressW = 0;
   switch (d.step) {
@@ -275,7 +279,9 @@ export function updateView({ farmId }) {
       const ph = d.pendingPhoto;
       body = `<div class="eyebrow">${esc(stageName(cur.stage))}</div><div class="change sm">${cur.prev}% → ${d.pending}%</div>
         ${ph ? `<button class="imgbtn" data-zoom="${ph}" style="border:0;padding:0;background:none">${photoImg(ph).replace('<img', '<img class="photo-preview"')}</button>
-          <div class="center h3 upper">${esc(t('photo_attached'))}</div><span class="spacer"></span>
+          <div class="center h3 upper">${esc(t('photo_attached'))}</div>
+          ${mediaSection(media(d.pendingExtra ||= {}), { videos: false })}
+          <span class="spacer"></span>
           <button class="btn" data-act="confirmphoto">${esc(t('confirm_pct', { p: d.pending }))}</button>
           <button class="linkbtn" data-act="camera">${esc(t('retake'))}</button>`
         : `<div class="banner warn">${esc(t('photo_required'))}</div><span class="spacer"></span>
@@ -295,12 +301,9 @@ export function updateView({ farmId }) {
           <div class="catgrid">${CATEGORIES.map(c => `<button class="cat ${is.category === c ? 'on' : ''}" data-cat="${c}">${esc(t('cat_' + c))}</button>`).join('')}</div>
           <div class="eyebrow">${esc(t('which_stage'))}</div>
           <div class="chips">${[null, ...STAGES.map(s => s.id)].map(s => `<button class="cat ${is.stage === s ? 'on' : ''}" data-st="${s ?? ''}" style="padding:0 14px;flex:0 0 auto">${esc(stageName(s))}</button>`).join('')}</div>
-          <div class="eyebrow">${esc(t('take_choose_photo'))} <span class="muted">(${esc(t('optional'))})</span></div>
-          ${is.photoId ? `<button data-zoom="${is.photoId}" style="border:0;padding:0;background:none">${photoImg(is.photoId).replace('<img', '<img class="photo-preview"')}</button>` : ''}
-          <div class="btn-row"><button class="btn ghost sm" data-act="icamera" style="width:100%">${esc(t('take_photo'))}</button>
-            <button class="btn ghost sm" data-act="igallery" style="width:100%">${esc(t('choose_from_phone'))}</button></div>
+          ${mediaSection(upgradeMedia(is))}
           <textarea class="input" id="issue-note" data-note placeholder="${esc(t('describe'))}">${esc(is.note)}</textarea>
-          <button class="btn" data-act="addissue" ${is.category && (is.note.trim() || is.photoId) ? '' : 'disabled'}>${esc(t('add_problem'))}</button>
+          <button class="btn" data-act="addissue" ${is.category && (is.note.trim() || is.photos.length || is.videos.length) ? '' : 'disabled'}>${esc(t('add_problem'))}</button>
           <button class="linkbtn" data-act="cancelissue">${esc(t('cancel'))}</button>`;
       } else {
         body = `<p class="question" style="font-size:22px">${esc(t('anything_blocking'))}</p>
@@ -336,11 +339,12 @@ export function updateView({ farmId }) {
         : loc.verified ? t('location_verified') : t('location_far', { km: loc.distKm.toFixed(1) });
       body = `<div class="h2">${esc(f.id)} · ${esc(t('today').toUpperCase())}</div>
         <div class="tbl-wrap"><table class="tbl"><tbody>${rows}
-          ${d.issues.map(i => `<tr data-issues style="cursor:pointer"><td>${esc(t('issue_reported'))}</td><td>${esc(t('cat_' + i.category))}</td><td>${i.photoId ? esc(t('photo_ok')) : ''}</td></tr>`).join('')}
+          ${d.issues.map(i => `<tr data-issues style="cursor:pointer"><td>${esc(t('issue_reported'))}</td><td>${esc(t('cat_' + i.category))}</td><td>${i.photos.length + i.videos.length ? `📷 ${i.photos.length + i.videos.length}` : ''}</td></tr>`).join('')}
         </tbody></table></div>
         <button class="linkbtn" data-act="editissues" style="align-self:flex-start">${esc(d.issues.length ? t('edit_problems') : t('report_issue'))}</button>
         <div><div class="strong">${d.items.filter(i => i.action).length + (d.matDone ? 1 : 0)} / ${n} ${esc(t('reviewed'))} · ${photoCount} ${esc(photoCount === 1 ? t('photo_1') : t('photos_n'))}</div>
           <div style="${loc && !loc.verified ? 'color:var(--red)' : ''}">${esc(locLine)}</div></div>
+        ${mediaSection(d.reportMedia, { title: t('report_media') })}
         <span class="spacer"></span>
         <button class="btn" data-act="submit">${esc(t('submit_day'))}</button>`;
       break;
@@ -362,7 +366,7 @@ export function updateView({ farmId }) {
       on('nochange', () => { cur.action = 'no_change'; cur.next = cur.prev; cur.photoId = null; nextStage(); });
       on('update', () => to('pick', { pending: cur.action === 'updated' ? cur.next : null }));
       root.querySelectorAll('[data-v]').forEach(b => b.onclick = () => { d.pending = +b.dataset.v; commit(); });
-      on('continue', () => to('photo', { pendingPhoto: null }));
+      on('continue', () => to('photo', { pendingPhoto: null, pendingExtra: { photos: (cur.extra || []).slice(), videos: [] } }));
 
       const capture = async (useCamera, meta, done) => {
         const file = await pickPhoto(useCamera);
@@ -374,9 +378,10 @@ export function updateView({ farmId }) {
       };
       const stageMeta = () => ({ stage: cur.stage, progress: d.pending, kind: 'progress' });
       on('camera', () => capture(true, stageMeta(), id => { d.pendingPhoto = id; }));
+      if (d.step === 'photo' && d.pendingExtra) bindMedia(root, media(d.pendingExtra), () => ({ ...stageMeta(), farmId: f.id }), commit);
       on('gallery', () => capture(false, stageMeta(), id => { d.pendingPhoto = id; }));
       on('confirmphoto', () => {
-        Object.assign(cur, { action: 'updated', next: d.pending, photoId: d.pendingPhoto });
+        Object.assign(cur, { action: 'updated', next: d.pending, photoId: d.pendingPhoto, extra: (d.pendingExtra?.photos || []).slice() });
         photoMeta(d.pendingPhoto).progress = d.pending;
         nextStage();
       });
@@ -409,12 +414,10 @@ export function updateView({ farmId }) {
         const note = root.querySelector('[data-note]');
         note.oninput = () => {
           is.note = note.value;
-          root.querySelector('[data-act=addissue]').disabled = !(is.category && (is.note.trim() || is.photoId));
+          root.querySelector('[data-act=addissue]').disabled = !(is.category && (is.note.trim() || is.photos.length || is.videos.length));
           save();
         };
-        const issueMeta = () => ({ stage: is.stage, progress: null, kind: 'issue' });
-        on('icamera', () => capture(true, issueMeta(), id => { is.photoId = id; }));
-        on('igallery', () => capture(false, issueMeta(), id => { is.photoId = id; }));
+        bindMedia(root, upgradeMedia(is), () => ({ farmId: f.id, stage: is.stage, progress: null, kind: 'issue' }), commit);
         on('addissue', () => { d.issues.push({ ...is, note: is.note.trim() }); d.issueForm = null; commit(); });
       }
 
@@ -422,6 +425,7 @@ export function updateView({ farmId }) {
       on('submit', () => submit(f, u, d));
 
       if (d.step === 'summary') {
+        bindMedia(root, d.reportMedia, () => ({ farmId: f.id, stage: null, progress: null, kind: 'progress', code: 'REPORT' }), commit);
         if (!d.location) {
           getPosition().then(p => {
             d.location = p
@@ -436,30 +440,58 @@ export function updateView({ farmId }) {
   };
 }
 
-// Optional videos (daily report and urgent problem): record or choose, preview, remove.
-const videoSection = ids => `<div class="eyebrow">🎬 ${esc(t('videos'))} <span class="muted">(${esc(t('optional'))} · ${esc(t('video_limit', { mb: VIDEO_MAX_MB }))})</span></div>
-  ${(ids || []).map(id => `<div class="vidrow">${videoEl(id)}<button class="linkbtn" data-rmvideo="${esc(id)}">${esc(t('remove'))}</button></div>`).join('')}
-  <div class="btn-row"><button class="btn ghost sm" data-act="vcamera" style="width:100%">🎬 ${esc(t('record_video'))}</button>
-    <button class="btn ghost sm" data-act="vgallery" style="width:100%">${esc(t('choose_video'))}</button></div>`;
-function bindVideos(root, d, meta, commit) {
-  const add = async useCamera => {
+// Photos and videos, as many as needed, on any report: thumbnails with Remove, and the add buttons.
+const media = o => { o.photos ||= []; o.videos ||= []; return o; };
+// Drafts saved by older versions had one photoId / videoIds: fold them into the lists.
+const upgradeMedia = o => {
+  media(o);
+  if (o.photoId && !o.photos.includes(o.photoId)) o.photos.unshift(o.photoId);
+  o.photoId = null;
+  if (o.videoIds?.length) { o.videos.push(...o.videoIds.filter(v => !o.videos.includes(v))); o.videoIds = []; }
+  return o;
+};
+const mediaSection = (m, { videos = true, title } = {}) => `<div class="eyebrow">📷${videos ? ' 🎬' : ''} ${esc(title || t(videos ? 'photos_videos' : 'more_photos'))}
+    <span class="muted">(${esc(t('optional'))}${videos ? ` · ${esc(t('video_limit', { mb: VIDEO_MAX_MB }))}` : ''})</span></div>
+  ${m.photos.length ? `<div class="matphotos">${m.photos.map(id => `<div class="vidrow"><button class="imgbtn" data-zoom="${esc(id)}" style="border:0;padding:0;background:none">${photoImg(id).replace('<img', '<img class="photo-preview"')}</button>
+    <button class="linkbtn" data-rmphoto="${esc(id)}">${esc(t('remove'))}</button></div>`).join('')}</div>` : ''}
+  ${videos ? m.videos.map(id => `<div class="vidrow">${videoEl(id)}<button class="linkbtn" data-rmvideo="${esc(id)}">${esc(t('remove'))}</button></div>`).join('') : ''}
+  <div class="btn-row"><button class="btn ghost sm" data-act="xcamera" style="width:100%">${ICONS.camera} ${esc(t('take_photo'))}</button>
+    <button class="btn ghost sm" data-act="xgallery" style="width:100%">${esc(t('choose_photos'))}</button></div>
+  ${videos ? `<div class="btn-row"><button class="btn ghost sm" data-act="vcamera" style="width:100%">🎬 ${esc(t('record_video'))}</button>
+    <button class="btn ghost sm" data-act="vgallery" style="width:100%">${esc(t('choose_video'))}</button></div>` : ''}`;
+function bindMedia(root, m, meta, commit) {
+  const on = (act, fn) => root.querySelectorAll(`[data-act=${act}]`).forEach(b => { b.onclick = fn; });
+  const addPhotos = async useCamera => {
+    const files = await pickPhotos(useCamera);
+    if (!files.length) return;
+    const where = meta();
+    const loc = where.farmId ? await Promise.race([getPosition(4000), new Promise(r => setTimeout(() => r(null), 4500))]) : null;
+    for (const file of files) {
+      try { const rec = await savePhoto(file, { ...where, loc }); m.photos.push(rec.id); } catch (err) { fail(err); }
+    }
+    commit();
+  };
+  const addVideo = async useCamera => {
     const file = await pickVideo(useCamera);
     if (!file) return;
     try {
       const rec = await saveVideo(file, meta());
-      (d.videoIds ||= []).push(rec.id);
+      m.videos.push(rec.id);
       commit();
     } catch (err) {
       if (err.message === 'video_too_big') toast(t('video_too_big', { mb: VIDEO_MAX_MB }));
       else fail(err);
     }
   };
-  root.querySelectorAll('[data-act=vcamera]').forEach(b => { b.onclick = () => add(true); });
-  root.querySelectorAll('[data-act=vgallery]').forEach(b => { b.onclick = () => add(false); });
+  on('xcamera', () => addPhotos(true));
+  on('xgallery', () => addPhotos(false));
+  on('vcamera', () => addVideo(true));
+  on('vgallery', () => addVideo(false));
+  root.querySelectorAll('[data-rmphoto]').forEach(b => b.onclick = async () => {
+    m.photos = m.photos.filter(x => x !== b.dataset.rmphoto); await discardVideo(b.dataset.rmphoto); commit();
+  });
   root.querySelectorAll('[data-rmvideo]').forEach(b => b.onclick = async () => {
-    d.videoIds = (d.videoIds || []).filter(x => x !== b.dataset.rmvideo);
-    await discardVideo(b.dataset.rmvideo);
-    commit();
+    m.videos = m.videos.filter(x => x !== b.dataset.rmvideo); await discardVideo(b.dataset.rmvideo); commit();
   });
 }
 
@@ -476,9 +508,13 @@ async function submit(f, u, d) {
   if (d.materials && MAT_ORDER.indexOf(d.materials) > MAT_ORDER.indexOf(now_)) report.materials = d.materials;
   report.materialsPhotos = (d.matPhotos || []).slice();
   const lang = getLang();
-  const issues = d.issues.map(i => ({ stage: i.stage, category: i.category, note: i.note, photoId: i.photoId, lang }));
+  d.issues.forEach(upgradeMedia);
+  const issues = d.issues.map(i => ({ stage: i.stage, category: i.category, note: i.note, photoId: i.photos[0] || null, lang }));
+  // everything beyond the one photo each stage update / problem needs goes up after the report
+  const rm = upgradeMedia(d.reportMedia || {});
+  const extras = [...d.items.flatMap(i => i.extra || []), ...d.issues.flatMap(i => [...i.photos.slice(1), ...i.videos]), ...rm.photos, ...rm.videos];
   delete state.drafts[d.key];
-  await queueReport(report, issues, report.materialsPhotos);
+  await queueReport(report, issues, extras);
   location.hash = `#/done/${report.id}`;
 }
 
@@ -509,7 +545,7 @@ export function doneView({ reportId }) {
 // ---------------- Report a problem now (urgent, without the daily report) ----------------
 export function problemView({ farmId }) {
   const u = me();
-  const d = state.drafts.__problem ||= { farmId: null, category: null, stage: null, note: '', photoId: null };
+  const d = upgradeMedia(state.drafts.__problem ||= { farmId: null, category: null, stage: null, note: '', photos: [], videos: [] });
   if (farmId && farm(farmId)) d.farmId = farmId;
   const f = d.farmId && farm(d.farmId);
   const commit = () => save().then(() => window.dispatchEvent(new Event('rerender')));
@@ -532,13 +568,9 @@ export function problemView({ farmId }) {
       <div class="catgrid">${CATEGORIES.map(c => `<button class="cat ${d.category === c ? 'on' : ''}" data-cat="${c}">${esc(t('cat_' + c))}</button>`).join('')}</div>
       <div class="eyebrow">${esc(t('which_stage'))} <span class="muted">(${esc(t('optional'))})</span></div>
       <div class="chips">${[null, ...STAGES.map(x => x.id)].map(x => `<button class="cat ${d.stage === x ? 'on' : ''}" data-st="${x ?? ''}" style="padding:0 14px;flex:0 0 auto">${esc(stageName(x))}</button>`).join('')}</div>
-      <div class="eyebrow">${esc(t('take_choose_photo'))} <span class="muted">(${esc(t('optional'))})</span></div>
-      ${d.photoId ? `<button data-zoom="${d.photoId}" style="border:0;padding:0;background:none">${photoImg(d.photoId).replace('<img', '<img class="photo-preview"')}</button>` : ''}
-      <div class="btn-row"><button class="btn ghost sm" data-act="camera" style="width:100%">${ICONS.camera} ${esc(t('take_photo'))}</button>
-        <button class="btn ghost sm" data-act="gallery" style="width:100%">${esc(t('choose_from_phone'))}</button></div>
-      ${videoSection(d.videoIds)}
+      ${mediaSection(d)}
       <textarea class="input" id="problem-note" data-note placeholder="${esc(t('describe'))}">${esc(d.note)}</textarea>
-      <button class="btn warn" data-act="send" ${d.category && (d.note.trim() || d.photoId || d.videoIds?.length) ? '' : 'disabled'}>${esc(t('urgent_send'))}</button>`;
+      <button class="btn warn" data-act="send" ${d.category && (d.note.trim() || d.photos.length || d.videos.length) ? '' : 'disabled'}>${esc(t('urgent_send'))}</button>`;
   }
   return {
     html: `<div class="screen">${topbar({ back: farmId ? `#/work/${farmId}` : '#/' })}<main class="content">${body}</main></div>`,
@@ -556,23 +588,13 @@ export function problemView({ farmId }) {
       const note = root.querySelector('[data-note]');
       if (note) note.oninput = () => {
         d.note = note.value;
-        root.querySelector('[data-act=send]').disabled = !(d.category && (d.note.trim() || d.photoId || d.videoIds?.length));
+        root.querySelector('[data-act=send]').disabled = !(d.category && (d.note.trim() || d.photos.length || d.videos.length));
         save();
       };
-      const capture = async useCamera => {
-        const file = await pickPhoto(useCamera);
-        if (!file) return;
-        const loc = await Promise.race([getPosition(4000), new Promise(r => setTimeout(() => r(null), 4500))]);
-        const rec = await savePhoto(file, { farmId: d.farmId, stage: d.stage, progress: null, kind: 'issue', loc });
-        d.photoId = rec.id;
-        commit();
-      };
-      on('camera', () => capture(true));
-      on('gallery', () => capture(false));
-      if (d.farmId) bindVideos(root, d, () => ({ farmId: d.farmId, stage: d.stage }), commit);
+      if (f) bindMedia(root, d, () => ({ farmId: d.farmId, stage: d.stage, progress: null, kind: 'issue' }), commit);
       on('send', async () => {
         const online = navigator.onLine;
-        await queueIssue(d.farmId, { category: d.category, stage: d.stage, note: d.note.trim(), photoId: d.photoId, lang: getLang() }, d.videoIds || []);
+        await queueIssue(d.farmId, { category: d.category, stage: d.stage, note: d.note.trim(), photoId: d.photos[0] || null, lang: getLang() }, [...d.photos.slice(1), ...d.videos]);
         delete state.drafts.__problem;
         await save();
         toast(online ? t('urgent_sent') : t('urgent_queued'));
@@ -585,7 +607,7 @@ export function problemView({ farmId }) {
 
 // ---------- General report: not about one farm (transport, warehouse, team, safety…) ----------
 export function generalView() {
-  const d = state.drafts.__general ||= { note: '', photoId: null, videoIds: [] };
+  const d = upgradeMedia(state.drafts.__general ||= { note: '', photos: [], videos: [] });
   const commit = () => save().then(() => window.dispatchEvent(new Event('rerender')));
   const back = isMgr(me()) ? '#/manage' : '#/';
   const ready = () => !!d.note.trim();
@@ -595,29 +617,16 @@ export function generalView() {
       <h1 class="h1" style="font-size:26px">${esc(t('general_title'))}</h1>
       <p class="muted" style="margin:0">${esc(t('general_hint'))}</p>
       <textarea class="input" id="general-note" data-note rows="6" style="min-height:160px" placeholder="${esc(t('general_placeholder'))}">${esc(d.note)}</textarea>
-      <div class="eyebrow">${esc(t('take_choose_photo'))} <span class="muted">(${esc(t('optional'))})</span></div>
-      ${d.photoId ? `<button data-zoom="${d.photoId}" style="border:0;padding:0;background:none">${photoImg(d.photoId).replace('<img', '<img class="photo-preview"')}</button>` : ''}
-      <div class="btn-row"><button class="btn ghost sm" data-act="camera" style="width:100%">${ICONS.camera} ${esc(t('take_photo'))}</button>
-        <button class="btn ghost sm" data-act="gallery" style="width:100%">${esc(t('choose_from_phone'))}</button></div>
-      ${videoSection(d.videoIds)}
+      ${mediaSection(d)}
       <button class="btn" data-act="send" ${ready() ? '' : 'disabled'}>${esc(t('send'))}</button>
     </main></div>`,
     async mount(root) {
       const note = root.querySelector('[data-note]');
       note.oninput = () => { d.note = note.value; root.querySelector('[data-act=send]').disabled = !ready(); save(); };
-      const capture = async useCamera => {
-        const file = await pickPhoto(useCamera);
-        if (!file) return;
-        const rec = await savePhoto(file, { farmId: null, stage: null, progress: null, kind: 'issue' });
-        d.photoId = rec.id;
-        commit();
-      };
-      root.querySelector('[data-act=camera]').onclick = () => capture(true);
-      root.querySelector('[data-act=gallery]').onclick = () => capture(false);
-      bindVideos(root, d, () => ({ farmId: null, stage: null }), commit);
+      bindMedia(root, d, () => ({ farmId: null, stage: null, progress: null, kind: 'issue' }), commit);
       root.querySelector('[data-act=send]').onclick = async () => {
         const online = navigator.onLine;
-        await queueGeneral({ note: d.note.trim(), photoId: d.photoId, videoIds: d.videoIds });
+        await queueGeneral({ note: d.note.trim(), photoId: d.photos[0] || null, extraIds: [...d.photos.slice(1), ...d.videos] });
         delete state.drafts.__general;
         await save();
         toast(online ? t('general_sent') : t('urgent_queued'));

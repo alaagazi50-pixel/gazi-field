@@ -114,6 +114,18 @@ export function getPosition(timeout = 12000) {
 
 // Hidden file input: capture=environment opens the rear camera on phones.
 export const pickVideo = capture => pickPhoto(capture, 'video/*');
+// Several photos: the camera gives one, the gallery lets the person tick many.
+export function pickPhotos(capture) {
+  return new Promise(resolve => {
+    const inp = document.createElement('input');
+    inp.type = 'file';
+    inp.accept = 'image/*';
+    if (capture) inp.capture = 'environment';
+    else inp.multiple = true;
+    inp.onchange = () => resolve([...inp.files]);
+    inp.click();
+  });
+}
 export function pickPhoto(capture, accept = 'image/*') {
   return new Promise(resolve => {
     const inp = document.createElement('input');

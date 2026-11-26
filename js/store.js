@@ -221,7 +221,8 @@ export const photoMeta = id => state.photos.find(p => p.id === id);
 export const pendingCount = () => state.outbox.filter(o => !o.error).length + (state.issueOutbox || []).filter(o => !o.error).length
   + (state.generalOutbox || []).filter(o => !o.error).length + state.pendingPhotos.filter(readyVideo).length;
 // A video waits on the phone until the report or problem it belongs to has been sent.
-const readyVideo = p => p.kind === 'video' && !p.error && !!(p.reportId || p.issueId || p.generalId);
+// Extra photos and videos wait on the phone until their report / problem / general report is in.
+const readyVideo = p => (p.kind === 'video' || p.extra) && !p.error && !!(p.reportId || p.issueId || p.generalId);
 
 // Farms this worker opened recently, most recent first (for the farm chooser).
 export async function rememberFarm(farmId) {
@@ -292,7 +293,7 @@ export async function savePhoto(file, meta) {
   g.drawImage(bmp, 0, 0, w, h);
 
   const takenAt = Date.now();
-  const label = meta.kind === 'drawing' ? `${meta.farmId} · DRAWING` : photoLabel(meta.farmId || 'GENERAL', meta.stage, meta.progress, takenAt);
+  const label = meta.kind === 'drawing' ? `${meta.farmId} · DRAWING` : photoLabel(meta.farmId || 'GENERAL', meta.stage, meta.progress, takenAt, meta.code);
   if (meta.kind !== 'drawing') {
     const fs = Math.max(14, Math.round(w / 45));
     g.fillStyle = 'rgba(9,59,53,.82)';
@@ -340,7 +341,7 @@ export async function discardVideo(id) {
   state.photos = state.photos.filter(p => p.id !== id || !p.pending);
   await save();
 }
-function attachVideos(ids, link) {
+function attachMedia(ids, link) {
   for (const id of ids || []) for (const p of [...state.pendingPhotos, ...state.photos]) if (p.id === id) Object.assign(p, link);
 }
 
@@ -352,7 +353,7 @@ async function uploadPhoto(rec) {
   const { error } = await sb.from('photos').insert({
     id: rec.id, farm_id: rec.farmId, stage: rec.stage === 'drawing' ? null : rec.stage, progress: rec.progress, kind: rec.kind,
     label: rec.label, path: rec.path, taken_at: new Date(rec.takenAt).toISOString(), user_id: rec.userId, team_id: rec.teamId, loc: rec.loc,
-    ...(rec.kind === 'video' ? { report_id: rec.reportId, issue_id: rec.issueId, general_id: rec.generalId ?? null } : rec.reportId ? { report_id: rec.reportId } : {}),
+    report_id: rec.reportId ?? null, issue_id: rec.issueId ?? null, general_id: rec.generalId ?? null,
   });
   if (error && error.code !== '23505') throw error;
   state.pendingPhotos = state.pendingPhotos.filter(p => p.id !== rec.id);
@@ -372,8 +373,10 @@ function viaImg(file) {
 }
 
 // ---------- field: daily report outbox ----------
-export async function queueReport(report, issues, videoIds = []) {
-  attachVideos(videoIds, { reportId: report.id });
+// extraIds: additional photos and videos (uploaded after the report itself; never hold it up).
+export async function queueReport(report, issues, extraIds = []) {
+  attachMedia(report.materialsPhotos, { reportId: report.id });
+  attachMedia(extraIds, { reportId: report.id, extra: true });
   const photoIds = [...report.items.map(i => i.photoId), ...issues.map(i => i.photoId), ...(report.materialsPhotos || [])].filter(Boolean);
   state.outbox.push({ id: report.id, report, issues, photoIds, queuedAt: Date.now() });
   await rememberFarm(report.farmId);
@@ -384,9 +387,9 @@ export async function queueReport(report, issues, videoIds = []) {
 }
 
 // A problem reported straight away (urgent), without a daily report. Queued like reports when offline.
-export async function queueIssue(farmId, issue, videoIds = []) {
+export async function queueIssue(farmId, issue, extraIds = []) {
   const id = newId();
-  attachVideos(videoIds, { issueId: id });
+  attachMedia(extraIds, { issueId: id, extra: true });
   state.issueOutbox.push({ id, farmId, issue: { ...issue, urgent: true }, photoIds: [issue.photoId].filter(Boolean), queuedAt: Date.now() });
   await rememberFarm(farmId);
   overlayLocal();
@@ -397,9 +400,9 @@ export async function queueIssue(farmId, issue, videoIds = []) {
 }
 
 // A general report: free text (+ optional photo / problem videos), not about one farm.
-export async function queueGeneral({ note, photoId, videoIds = [] }) {
+export async function queueGeneral({ note, photoId, extraIds = [] }) {
   const id = newId();
-  attachVideos(videoIds, { generalId: id });
+  attachMedia(extraIds, { generalId: id, extra: true });
   state.generalOutbox.push({ id, note, lang: getLang(), photoId: photoId || null, photoIds: [photoId].filter(Boolean), queuedAt: Date.now() });
   overlayLocal();
   await save();
@@ -505,7 +508,7 @@ export async function sync() {
       await save();
       } catch (e) { await skip(o, e); }
     }
-    // Videos last, once their report or problem is in: a big file never holds up the report itself.
+    // Extra photos and videos last, once their report or problem is in: they never hold up the report itself.
     for (const p of state.pendingPhotos.filter(readyVideo)) {
       if (state.outbox.some(o => o.id === p.reportId) || state.issueOutbox.some(o => o.id === p.issueId) || state.generalOutbox.some(o => o.id === p.generalId)) continue;
       try { await uploadPhoto(p); }
